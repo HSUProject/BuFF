@@ -197,6 +197,7 @@ public:
 			float glow_y_cutoff,
 			int glow_mode,
 			const float* extra_dims_gpu,
+			bool init_volume_data,
 			cudaStream_t stream
 		);
 
@@ -550,10 +551,18 @@ public:
 	ETestbedMode m_testbed_mode = ETestbedMode::None;
 	bool m_max_level_rand_training = false;
 
+	// ------------------------------------------------- UPDATE -------------------------------------------------
+
+	bool m_init_volume_data = false;
+	vec3 m_prev_input_pos = vec3(0.0f);
+	vec3 m_curr_input_pos = vec3(0.0f);
+
+	// ------------------------------------------------- UPDATE -------------------------------------------------
+
 	// Rendering stuff
 	ivec2 m_window_res = ivec2(0);
 	bool m_dynamic_res = true;
-	float m_dynamic_res_target_fps = 20.0f;
+	float m_dynamic_res_target_fps = 40.0f;
 	int m_fixed_res_factor = 8;
 	float m_scale = 1.0;
 	float m_aperture_size = 0.0f;

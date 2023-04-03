@@ -2064,7 +2064,18 @@ void Testbed::mouse_drag() {
 	vec3 up = m_up_dir;
 	vec3 side = m_camera[0];
 
+	bool ctrl = ImGui::GetIO().KeyMods & ImGuiKeyModFlags_Ctrl;
 	bool shift = ImGui::GetIO().KeyMods & ImGuiKeyModFlags_Shift;
+
+	// ------------------------------------------ UPDATE ------------------------------------------
+
+	// Left Released
+	if (ImGui::GetIO().MouseReleased[0]) {
+		m_prev_input_pos = vec3(0.0f);
+		m_curr_input_pos = vec3(0.0f);
+	}
+
+	// ------------------------------------------ UPDATE ------------------------------------------
 
 	// Left held
 	if (ImGui::GetIO().MouseDown[0]) {
@@ -2073,20 +2084,34 @@ void Testbed::mouse_drag() {
 			m_autofocus = true;
 
 			reset_accumulation();
-		} else {
+		}
+		else if (ctrl) {
 			float rot_sensitivity = m_fps_camera ? 0.35f : 1.0f;
 			mat3 rot = rotation_from_angles(-rel * 2.0f * PI() * rot_sensitivity);
 
 			if (m_fps_camera) {
 				rot *= mat3(m_camera);
 				m_camera = mat4x3(rot[0], rot[1], rot[2], m_camera[3]);
-			} else {
+			}
+			else {
 				// Turntable
 				auto old_look_at = look_at();
-				set_look_at({0.0f, 0.0f, 0.0f});
+				set_look_at({ 0.0f, 0.0f, 0.0f });
 				m_camera = rot * m_camera;
 				set_look_at(old_look_at);
 			}
+
+			reset_accumulation();
+		}
+		else {
+			// Drag to create a new vector space for deformation
+			ivec2 clicked_mouse_pos = { ImGui::GetIO().MouseClickedPos[0].x, ImGui::GetIO().MouseClickedPos[0].y };
+
+			m_prev_input_pos = get_3d_pos_from_pixel(*m_views.front().render_buffer, clicked_mouse_pos);
+			m_curr_input_pos = get_3d_pos_from_pixel(*m_views.front().render_buffer, mouse);
+
+			//printf("[prev_mouse] %d %d\n", clicked_mouse_pos.x, clicked_mouse_pos.y);
+			//printf("[curr_mouse] %d %d\n", mouse.x, mouse.y);
 
 			reset_accumulation(true);
 		}
@@ -2094,12 +2119,28 @@ void Testbed::mouse_drag() {
 
 	// Right held
 	if (ImGui::GetIO().MouseDown[1]) {
-		mat3 rot = rotation_from_angles(-rel * 2.0f * PI());
-		if (m_render_mode == ERenderMode::Shade) {
-			m_sun_dir = transpose(rot) * m_sun_dir;
+		//mat3 rot = rotation_from_angles(-rel * 2.0f * PI());
+		//if (m_render_mode == ERenderMode::Shade) {
+		//	m_sun_dir = transpose(rot) * m_sun_dir;
+		//}
+		//
+		//m_slice_plane_z += -rel.y * m_bounding_radius;
+
+		float rot_sensitivity = m_fps_camera ? 0.35f : 1.0f;
+		mat3 rot = rotation_from_angles(-rel * 2.0f * PI() * rot_sensitivity);
+
+		if (m_fps_camera) {
+			rot *= mat3(m_camera);
+			m_camera = mat4x3(rot[0], rot[1], rot[2], m_camera[3]);
+		}
+		else {
+			// Turntable
+			auto old_look_at = look_at();
+			set_look_at({ 0.0f, 0.0f, 0.0f });
+			m_camera = rot * m_camera;
+			set_look_at(old_look_at);
 		}
 
-		m_slice_plane_z += -rel.y * m_bounding_radius;
 		reset_accumulation();
 	}
 
