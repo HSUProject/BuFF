@@ -2483,25 +2483,19 @@ void deform(int x, int y, int z, vec3 dir, vec3 force)
 	volume_data_host[idx] -= dir;
 }
 
-void update_volume_data(vec3 prev_input_pos, vec3 curr_input_pos)
+void update_volume_data(vec3 input_click_pos, vec3 input_dir)
 {
 	vec3 epicenter = vec3(0.0f);
-	epicenter.x = prev_input_pos.x * 100 + 150;
-	epicenter.y = prev_input_pos.y * 100 + 150;
-	epicenter.z = prev_input_pos.z * 100 + 150;
+	epicenter.x = input_click_pos.x * 100 + 150;
+	epicenter.y = input_click_pos.y * 100 + 150;
+	epicenter.z = input_click_pos.z * 100 + 150;
 	int epicenterIdx = epicenter.z * W * H + epicenter.y * W + epicenter.x;
 
-	vec3 dir = curr_input_pos - prev_input_pos;
-	//printf("%f %f %f\n", dir.x, dir.y, dir.z);
-
-	//dir.x = (int)dir.x * 100 / 100.0;
-	//dir.y = (int)dir.y * 100 / 100.0;
-	//dir.z = (int)dir.z * 100 / 100.0;
+	vec3 dir = input_dir;
+	//printf("[dir] %f %f %f\n", dir.x, dir.y, dir.z);
 
 	int range = 10;
-	float step = 1.0f / (range / 2);
-
-	//volume_data_host[epicenterIdx] += dir;
+	float step = 1.0f / (range * 0.5);
 
 	int idx = 0;
 	vec3 force = vec3(0.0f);
@@ -2559,6 +2553,7 @@ void update_volume_data(vec3 prev_input_pos, vec3 curr_input_pos)
 
 //------------------------------------------UPDATE------------------------------------------
 
+
 void Testbed::render_nerf(
 	cudaStream_t stream,
 	const CudaRenderBufferView& render_buffer,
@@ -2600,22 +2595,28 @@ void Testbed::render_nerf(
 			m_init_volume_data = true;
 		}
 		else {
-			if (m_prev_input_pos != m_curr_input_pos) {
+			if (m_update_volume_data) {
+				// Validation for input out of volume data boundary
 				float min_range = -1.5f;
 				float max_range = 2.5f;
+				vec3 min_idx = m_input_click_pos - m_input_dir;
+				vec3 max_idx = m_input_click_pos + m_input_dir;
 
-				if (m_prev_input_pos.x > min_range && m_prev_input_pos.x < max_range &&
-					m_prev_input_pos.y > min_range && m_prev_input_pos.y < max_range &&
-					m_prev_input_pos.z > min_range && m_prev_input_pos.z < max_range &&
-					m_curr_input_pos.x > min_range && m_curr_input_pos.x < max_range &&
-					m_curr_input_pos.y > min_range && m_curr_input_pos.y < max_range &&
-					m_curr_input_pos.z > min_range && m_curr_input_pos.z < max_range)
+				if (min_idx.x > min_range && max_idx.x < max_range &&
+					min_idx.y > min_range && max_idx.y < max_range &&
+					min_idx.z > min_range && max_idx.z < max_range)
 				{
-					update_volume_data(m_prev_input_pos, m_curr_input_pos);
+					update_volume_data(m_input_click_pos, m_input_dir);
 
 					CUDA_CHECK_THROW(cudaMemcpyAsync(volume_data_device, volume_data_host, size * sizeof(vec3), cudaMemcpyHostToDevice), stream);
 					CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
+
+					// Reset input data for next deformation
+					m_input_click_pos = vec3(0.0f);
+					m_input_dir = vec3(0.0f);
 				}
+
+				m_update_volume_data = false;
 			}
 		}
 	}
