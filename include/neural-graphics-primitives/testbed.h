@@ -8,9 +8,9 @@
  * license agreement from NVIDIA CORPORATION is strictly prohibited.
  */
 
-/** @file   testbed.h
- *  @author Thomas Müller & Alex Evans, NVIDIA
- */
+ /** @file   testbed.h
+  *  @author Thomas Müller & Alex Evans, NVIDIA
+  */
 
 #pragma once
 
@@ -123,7 +123,7 @@ public:
 		);
 		void enlarge(size_t n_elements, cudaStream_t stream);
 		RaysSdfSoa& rays_hit() { return m_rays_hit; }
-		RaysSdfSoa& rays_init() { return m_rays[0];	}
+		RaysSdfSoa& rays_init() { return m_rays[0]; }
 		uint32_t n_rays_initialized() const { return m_n_rays_initialized; }
 		void set_trace_shadow_rays(bool val) { m_trace_shadow_rays = val; }
 		void set_shadow_sharpness(float val) { m_shadow_sharpness = val; }
@@ -185,7 +185,7 @@ public:
 			float cone_angle_constant,
 			const uint8_t* grid,
 			ERenderMode render_mode,
-			const mat4x3 &camera_matrix,
+			const mat4x3& camera_matrix,
 			float depth_scale,
 			int visualized_layer,
 			int visualized_dim,
@@ -362,7 +362,7 @@ public:
 	fs::path find_network_config(const fs::path& network_config_path);
 	nlohmann::json load_network_config(const fs::path& network_config_path);
 	void reload_network_from_file(const fs::path& path = "");
-	void reload_network_from_json(const nlohmann::json& json, const std::string& config_base_path=""); // config_base_path is needed so that if the passed in json uses the 'parent' feature, we know where to look... be sure to use a filename, or if a directory, end with a trailing slash
+	void reload_network_from_json(const nlohmann::json& json, const std::string& config_base_path = ""); // config_base_path is needed so that if the passed in json uses the 'parent' feature, we know where to look... be sure to use a filename, or if a directory, end with a trailing slash
 	void reset_accumulation(bool due_to_camera_movement = false, bool immediate_redraw = true);
 	void redraw_next_frame() {
 		m_render_skip_due_to_lack_of_camera_movement_counter = 0;
@@ -410,7 +410,7 @@ public:
 		tcnn::GPUMemory<uint32_t> numsteps_counter_compacted; // number of steps each ray took
 		tcnn::GPUMemory<float> loss;
 
-		uint32_t rays_per_batch = 1<<12;
+		uint32_t rays_per_batch = 1 << 12;
 		uint32_t n_rays_total = 0;
 		uint32_t measured_batch_size = 0;
 		uint32_t measured_batch_size_before_compaction = 0;
@@ -451,15 +451,16 @@ public:
 	size_t n_encoding_params();
 
 #ifdef NGP_PYTHON
-	pybind11::dict compute_marching_cubes_mesh(ivec3 res3d = ivec3(128), BoundingBox aabb = BoundingBox{vec3(0.0f), vec3(1.0f)}, float thresh=2.5f);
+	pybind11::dict compute_marching_cubes_mesh(ivec3 res3d = ivec3(128), BoundingBox aabb = BoundingBox{ vec3(0.0f), vec3(1.0f) }, float thresh = 2.5f);
 	pybind11::array_t<float> render_to_cpu(int width, int height, int spp, bool linear, float start_t, float end_t, float fps, float shutter_fraction);
 	pybind11::array_t<float> view(bool linear, size_t view) const;
 	pybind11::array_t<float> screenshot(bool linear, bool front_buffer) const;
 	void override_sdf_training_data(pybind11::array_t<float> points, pybind11::array_t<float> distances);
 #endif
 
-	double calculate_iou(uint32_t n_samples=128*1024*1024, float scale_existing_results_factor=0.0, bool blocking=true, bool force_use_octree = true);
+	double calculate_iou(uint32_t n_samples = 128 * 1024 * 1024, float scale_existing_results_factor = 0.0, bool blocking = true, bool force_use_octree = true);
 	void draw_visualizations(ImDrawList* list, const mat4x3& camera_matrix);
+	vec3 convert_input_dir_to_world(ivec2 prev_mouse_pos, ivec2 curr_mouse_pos, const mat4x3& camera_matrix);
 	void train_and_render(bool skip_rendering);
 	fs::path training_data_path() const;
 	void init_window(int resw, int resh, bool hidden = false, bool second_window = false);
@@ -481,9 +482,9 @@ public:
 	void load_stbi_image(const fs::path& data_path);
 	void load_binary_image(const fs::path& data_path);
 	uint32_t n_dimensions_to_visualize() const;
-	float fov() const ;
-	void set_fov(float val) ;
-	vec2 fov_xy() const ;
+	float fov() const;
+	void set_fov(float val);
+	vec2 fov_xy() const;
 	void set_fov_xy(const vec2& val);
 	void save_snapshot(const fs::path& path, bool include_optimizer_state, bool compress);
 	void load_snapshot(const fs::path& path);
@@ -522,14 +523,14 @@ public:
 		std::shared_ptr<tcnn::Optimizer<float>> verts_optimizer;
 
 		void clear() {
-			indices={};
-			verts={};
-			vert_normals={};
-			vert_colors={};
-			verts_smoothed={};
-			verts_gradient={};
-			trainable_verts=nullptr;
-			verts_optimizer=nullptr;
+			indices = {};
+			verts = {};
+			vert_normals = {};
+			vert_colors = {};
+			verts_smoothed = {};
+			verts_gradient = {};
+			trainable_verts = nullptr;
+			verts_optimizer = nullptr;
 		}
 	};
 	MeshState m_mesh;
@@ -554,8 +555,9 @@ public:
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 
 	bool m_init_volume_data = false;
-	vec3 m_prev_input_pos = vec3(0.0f);
-	vec3 m_curr_input_pos = vec3(0.0f);
+	bool m_update_volume_data = false;
+	vec3 m_input_click_pos = vec3(0.0f);
+	vec3 m_input_dir = vec3(0.0f);
 
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 
@@ -585,7 +587,7 @@ public:
 
 	CameraPath m_camera_path = {};
 
-	vec3 m_up_dir = {0.0f, 1.0f, 0.0f};
+	vec3 m_up_dir = { 0.0f, 1.0f, 0.0f };
 	vec3 m_sun_dir = normalize(vec3(1.0f));
 	float m_bounding_radius = 1;
 	float m_exposure = 0.f;
@@ -652,8 +654,8 @@ public:
 				tcnn::GPUMemory<float> cdf_y;
 				tcnn::GPUMemory<float> cdf_img;
 				std::vector<float> pmf_img_cpu;
-				ivec2 resolution = {16, 16};
-				ivec2 cdf_resolution = {16, 16};
+				ivec2 resolution = { 16, 16 };
+				ivec2 cdf_resolution = { 16, 16 };
 				bool is_cdf_valid = false;
 			} error_map;
 
@@ -682,7 +684,7 @@ public:
 			tcnn::GPUMemory<float> extra_dims_gradient_gpu;
 			std::vector<VarAdamOptimizer> extra_dims_opt;
 
-			void reset_extra_dims(default_rng_t &rng);
+			void reset_extra_dims(default_rng_t& rng);
 
 			float extrinsic_l2_reg = 1e-4f;
 			float extrinsic_learning_rate = 1e-3f;
@@ -758,7 +760,7 @@ public:
 
 		float sharpen = 0.f;
 
-		float cone_angle_constant = 1.f/256.f;
+		float cone_angle_constant = 1.f / 256.f;
 
 		bool visualize_cameras = false;
 		bool render_with_lens_distortion = false;
@@ -846,7 +848,7 @@ public:
 
 			bool snap_to_pixel_centers = true;
 			bool linear_colors = false;
-		} training  = {};
+		} training = {};
 
 		ERandomMode random_mode = ERandomMode::Stratified;
 	} m_image;
@@ -864,7 +866,7 @@ public:
 		tcnn::GPUMemory<char> nanovdb_grid;
 		tcnn::GPUMemory<uint8_t> bitgrid;
 		float global_majorant = 1.f;
-		vec3 world2index_offset = {0, 0, 0};
+		vec3 world2index_offset = { 0, 0, 0 };
 		float world2index_scale = 1.f;
 
 		struct Training {
@@ -901,15 +903,15 @@ public:
 	void set_crop_box(mat4x3 m, bool nerf_space);
 
 	// Rendering/UI bookkeeping
-	Ema m_training_prep_ms = {EEmaType::Time, 100};
-	Ema m_training_ms = {EEmaType::Time, 100};
-	Ema m_render_ms = {EEmaType::Time, 100};
+	Ema m_training_prep_ms = { EEmaType::Time, 100 };
+	Ema m_training_ms = { EEmaType::Time, 100 };
+	Ema m_render_ms = { EEmaType::Time, 100 };
 	// The frame contains everything, i.e. training + rendering + GUI and buffer swapping
-	Ema m_frame_ms = {EEmaType::Time, 100};
+	Ema m_frame_ms = { EEmaType::Time, 100 };
 	std::chrono::time_point<std::chrono::steady_clock> m_last_frame_time_point;
 	std::chrono::time_point<std::chrono::steady_clock> m_last_gui_draw_time_point;
 	std::chrono::time_point<std::chrono::steady_clock> m_training_start_time_point;
-	vec4 m_background_color = {0.0f, 0.0f, 0.0f, 1.0f};
+	vec4 m_background_color = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	bool m_vsync = false;
 	bool m_render_transparency_as_checkerboard = false;
@@ -920,7 +922,7 @@ public:
 
 	struct View {
 		std::shared_ptr<CudaRenderBuffer> render_buffer;
-		ivec2 full_resolution = {1, 1};
+		ivec2 full_resolution = { 1, 1 };
 		int visualized_dimension = 0;
 
 		mat4x3 camera0 = mat4x3(1.0f);
@@ -937,7 +939,7 @@ public:
 	};
 
 	std::vector<View> m_views;
-	ivec2 m_n_views = {1, 1};
+	ivec2 m_n_views = { 1, 1 };
 
 	bool m_single_view = true;
 
@@ -962,7 +964,7 @@ public:
 
 	bool m_snap_to_pixel_centers = false;
 
-	vec3 m_parallax_shift = {0.0f, 0.0f, 0.0f}; // to shift the viewer's origin by some amount in camera space
+	vec3 m_parallax_shift = { 0.0f, 0.0f, 0.0f }; // to shift the viewer's origin by some amount in camera space
 
 	// CUDA stuff
 	tcnn::StreamAndEvent m_stream;
@@ -981,7 +983,7 @@ public:
 
 	uint32_t m_training_step = 0;
 	uint32_t m_training_batch_size = 1 << 18;
-	Ema m_loss_scalar = {EEmaType::Time, 100};
+	Ema m_loss_scalar = { EEmaType::Time, 100 };
 	std::vector<float> m_loss_graph = std::vector<float>(256, 0.0f);
 	size_t m_loss_graph_samples = 0;
 
@@ -998,7 +1000,7 @@ public:
 			std::shared_ptr<Buffer2D<uint8_t>> hidden_area_mask;
 		};
 
-		CudaDevice(int id, bool is_primary) : m_id{id}, m_is_primary{is_primary} {
+		CudaDevice(int id, bool is_primary) : m_id{ id }, m_is_primary{ is_primary } {
 			auto guard = device_guard();
 			m_stream = std::make_unique<tcnn::StreamAndEvent>();
 			m_data = std::make_unique<Data>();
@@ -1018,9 +1020,9 @@ public:
 			}
 
 			tcnn::set_cuda_device(m_id);
-			return tcnn::ScopeGuard{[prev_device]() {
+			return tcnn::ScopeGuard{ [prev_device]() {
 				tcnn::set_cuda_device(prev_device);
-			}};
+			} };
 		}
 
 		int id() const {
@@ -1098,7 +1100,8 @@ public:
 		auto enqueue_task(F&& f) -> std::future<std::result_of_t <F()>> {
 			if (is_primary()) {
 				return std::async(std::launch::deferred, std::forward<F>(f));
-			} else {
+			}
+			else {
 				return m_render_worker->enqueue_task(std::forward<F>(f));
 			}
 		}
@@ -1166,7 +1169,7 @@ public:
 
 	default_rng_t m_rng;
 
-	CudaRenderBuffer m_windowless_render_surface{std::make_shared<CudaSurface2D>()};
+	CudaRenderBuffer m_windowless_render_surface{ std::make_shared<CudaSurface2D>() };
 
 	uint32_t network_width(uint32_t layer) const;
 	uint32_t network_num_forward_activations() const;
@@ -1191,7 +1194,7 @@ public:
 				return {};
 			}
 
-			return {(const vec4*)envmap->inference_params(), resolution};
+			return { (const vec4*)envmap->inference_params(), resolution };
 		}
 
 		Buffer2DView<const vec4> view() const {
@@ -1199,7 +1202,7 @@ public:
 				return {};
 			}
 
-			return {(const vec4*)envmap->params(), resolution};
+			return { (const vec4*)envmap->params(), resolution };
 		}
 	} m_envmap;
 
@@ -1214,7 +1217,7 @@ public:
 				return {};
 			}
 
-			return {(const vec2*)map->inference_params(), resolution};
+			return { (const vec2*)map->inference_params(), resolution };
 		}
 
 		Buffer2DView<const vec2> view() const {
@@ -1222,7 +1225,7 @@ public:
 				return {};
 			}
 
-			return {(const vec2*)map->params(), resolution};
+			return { (const vec2*)map->params(), resolution };
 		}
 	} m_distortion;
 	std::shared_ptr<NerfNetwork<precision_t>> m_nerf_network;
