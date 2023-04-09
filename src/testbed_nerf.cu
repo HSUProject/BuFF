@@ -934,11 +934,22 @@ __global__ void generate_next_nerf_network_inputs(
 	float t = payload.t;
 
 	for (uint32_t j = 0; j < n_steps; ++j) {
-		t = if_unoccupied_advance_to_next_occupied_voxel(t, cone_angle, { origin, dir }, idir, density_grid, min_mip, max_mip, render_aabb, volume_data_device, init_volume_data, render_aabb_to_local);
+		Ray ray = { origin, dir };
+
+		t = if_unoccupied_advance_to_next_occupied_voxel(t, cone_angle, ray, idir, density_grid, min_mip, max_mip, render_aabb, volume_data_device, init_volume_data, render_aabb_to_local);
 		if (t >= MAX_DEPTH()) {
 			payload.n_steps = j;
 			return;
 		}
+
+		// -----------UPDATE------------
+
+		vec3 pos = ray(t);
+		if (init_volume_data) {
+			pos = pos_changer(pos, volume_data_device);
+		}
+
+		// -----------UPDATE------------
 
 		float dt = calc_dt(t, cone_angle);
 		network_input(i + j * n_elements)->set_with_optional_extra_dims(warp_position(origin + dir * t, train_aabb), warp_direction(dir), warp_dt(dt), extra_dims, network_input.stride_in_bytes); // XXXCONE
