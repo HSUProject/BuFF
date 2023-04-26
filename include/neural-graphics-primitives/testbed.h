@@ -559,6 +559,8 @@ public:
 	vec3 m_input_click_pos = vec3(0.0f);
 	vec3 m_input_dir = vec3(0.0f);
 
+	bool m_revert_volume_data = false;
+
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 
 	// Rendering stuff

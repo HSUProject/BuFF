@@ -714,6 +714,10 @@ vec3* volume_origin_host = nullptr; // CPU
 vec3* volume_data_device = nullptr; // GPU
 vec3* volume_origin_device = nullptr; // GPU
 
+vec3* revert_click_pos = nullptr;
+vec3* revert_dir = nullptr;
+int revert_idx = -1;
+
 __device__ vec3 pos_changer(vec3 pos, vec3* volume_data)
 {
 	vec3 res;
@@ -2606,13 +2610,12 @@ void update_volume_data(vec3 input_click_pos, vec3 input_dir)
 	epicenter.z = input_click_pos.z * 100 + 150;
 
 	vec3 dir = vec3(0.0f);
-	float force = 1.2f;
+	float force = 1.7f;
 	//printf("[01] %f %f %f\n", input_dir.x, input_dir.y, input_dir.z);
 	dir.x = input_dir.x * force;
 	dir.y = input_dir.y * force;
 	dir.z = input_dir.z * force;
 	//printf("[02] %f %f %f\n", dir.x, dir.y, dir.z);
-
 
 	int range = 5;
 	for (int z = epicenter.z - range; z < epicenter.z + range; z++) {
@@ -2634,6 +2637,47 @@ void update_volume_data(vec3 input_click_pos, vec3 input_dir)
 			}
 		}
 	}
+
+	revert_idx++;
+	revert_click_pos[revert_idx] = epicenter;
+	revert_dir[revert_idx] = dir;
+}
+
+void revert_volume_data() {
+	vec3 epicenter = vec3(0.0f);
+	epicenter.x = revert_click_pos[revert_idx].x;
+	epicenter.y = revert_click_pos[revert_idx].y;
+	epicenter.z = revert_click_pos[revert_idx].z;
+
+	vec3 dir = vec3(0.0f);
+	dir.x = revert_dir[revert_idx].x;
+	dir.y = revert_dir[revert_idx].y;
+	dir.z = revert_dir[revert_idx].z;
+
+	int range = 5;
+	for (int z = epicenter.z - range; z < epicenter.z + range; z++) {
+		for (int y = epicenter.y - range; y < epicenter.y + range; y++) {
+			for (int x = epicenter.x - range; x < epicenter.x + range; x++) {
+				int idx = z * W * H + y * W + x;
+				int idx2 = (z + (int)dir.z) * W * H + (y + (int)dir.y) * W + (x + (int)dir.x);
+				if (idx2 > W * H * D) idx2 = W * H * D - 1;
+				volume_data_host[idx] = volume_origin_host[idx2];
+			}
+		}
+	}
+
+	for (int z = epicenter.z - range; z < epicenter.z + range; z++) {
+		for (int y = epicenter.y - range; y < epicenter.y + range; y++) {
+			for (int x = epicenter.x - range; x < epicenter.x + range; x++) {
+				int idx = z * W * H + y * W + x;
+				volume_origin_host[idx] = volume_data_host[idx];
+			}
+		}
+	}
+
+	revert_click_pos[revert_idx] = vec3(0.0f);
+	revert_dir[revert_idx] = vec3(0.0f);
+	revert_idx--;
 }
 
 //------------------------------------------UPDATE------------------------------------------
@@ -2668,6 +2712,7 @@ void Testbed::render_nerf(
 	// After training has completed initialize the volume data ONCE
 	if (!m_train) {
 		int size = W * H * D;
+		int revert_size = 30;
 
 		if (!m_init_volume_data) {
 			volume_data_host = (vec3*)malloc(size * sizeof(vec3));
@@ -2675,6 +2720,9 @@ void Testbed::render_nerf(
 			volume_origin_host = (vec3*)malloc(size * sizeof(vec3));
 			CUDA_CHECK_THROW(cudaMalloc((vec3**)&volume_origin_device, size * sizeof(vec3)));
 			initialize_volume_data();
+
+			revert_click_pos = (vec3*)malloc(revert_size * sizeof(vec3));
+			revert_dir = (vec3*)malloc(revert_size * sizeof(vec3));
 
 			CUDA_CHECK_THROW(cudaMemcpyAsync(volume_data_device, volume_data_host, size * sizeof(vec3), cudaMemcpyHostToDevice), stream);
 			CUDA_CHECK_THROW(cudaMemcpyAsync(volume_origin_device, volume_origin_host, size * sizeof(vec3), cudaMemcpyHostToDevice), stream);
@@ -2705,6 +2753,16 @@ void Testbed::render_nerf(
 				}
 
 				m_update_volume_data = false;
+			}
+
+			if (m_revert_volume_data) {
+				if (revert_idx >= 0) {
+					revert_volume_data();
+					CUDA_CHECK_THROW(cudaMemcpyAsync(volume_data_device, volume_data_host, size * sizeof(vec3), cudaMemcpyHostToDevice), stream);
+					CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
+				}
+				else (printf("original volume data\n"));
+				m_revert_volume_data = false;
 			}
 		}
 	}

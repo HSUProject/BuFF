@@ -1752,6 +1752,10 @@ void Testbed::imgui() {
 		m_want_repl = true;
 	}
 
+	if (ImGui::Button("Revert Deform")) {
+		m_revert_volume_data = true;
+	}
+
 	ImGui::End();
 }
 
