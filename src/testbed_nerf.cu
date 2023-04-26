@@ -1313,6 +1313,8 @@ __global__ void generate_training_samples_nerf(
 	const TrainingXForm* training_xforms,
 	const uint8_t* __restrict__ density_grid,
 	uint32_t max_mip,
+	bool max_level_rand_training,
+	float* __restrict__ max_level_ptr,
 	bool snap_to_pixel_centers,
 	bool train_envmap,
 	float cone_angle_constant,
@@ -1339,6 +1341,7 @@ __global__ void generate_training_samples_nerf(
 		return;
 	}
 
+	float max_level = max_level_rand_training ? (random_val(rng) * 2.0f) : 1.0f; // Multiply by 2 to ensure 50% of training is at max level
 
 	float motionblur_time = random_val(rng);
 
@@ -1443,6 +1446,12 @@ __global__ void generate_training_samples_nerf(
 		}
 	}
 
+	if (max_level_rand_training) {
+		max_level_ptr += base;
+		for (j = 0; j < numsteps; ++j) {
+			max_level_ptr[j] = max_level;
+		}
+	}
 }
 
 
@@ -1476,6 +1485,7 @@ __global__ void compute_loss_kernel_train_nerf(
 	ELossType loss_type,
 	ELossType depth_loss_type,
 	float* __restrict__ loss_output,
+	bool max_level_rand_training,
 	float* __restrict__ max_level_compacted_ptr,
 	ENerfActivation rgb_activation,
 	ENerfActivation density_activation,
@@ -1553,6 +1563,7 @@ __global__ void compute_loss_kernel_train_nerf(
 
 	float uv_pdf = 1.0f;
 	vec2 uv = nerf_random_image_pos_training(rng, resolution, snap_to_pixel_centers, cdf_x_cond_y, cdf_y, error_map_cdf_res, img, &uv_pdf);
+	float max_level = max_level_rand_training ? (random_val(rng) * 2.0f) : 1.0f; // Multiply by 2 to ensure 50% of training is at max level
 	rng.advance(1); // motionblur_time
 
 	if (train_with_random_bg_color) {
@@ -1671,6 +1682,9 @@ __global__ void compute_loss_kernel_train_nerf(
 	float depth_ray2 = 0.f;
 	T = 1.f;
 	for (uint32_t j = 0; j < compacted_numsteps; ++j) {
+		if (max_level_rand_training) {
+			max_level_compacted_ptr[j] = max_level;
+		}
 		// Compact network inputs
 		NerfCoordinate* coord_out = coords_out(j);
 		const NerfCoordinate* coord_in = coords_in(j);
@@ -2476,6 +2490,118 @@ void initialize_volume_data()
 	}
 }
 
+//void deform(int x, int y, int z, vec3 dir, vec3 force)
+//{
+//	int idx = z * W * H + y * W + x;
+//
+//	dir.x *= force.x;
+//	dir.y *= force.y;
+//	dir.z *= force.z;
+//
+//	volume_data_host[idx] -= dir;
+//}
+//
+//void update_volume_data(vec3 input_click_pos, vec3 input_dir)
+//{
+//   vec3 epicenter = vec3(0.0f);
+//   epicenter.x = input_click_pos.x * 100 + 150;
+//   epicenter.y = input_click_pos.y * 100 + 150;
+//   epicenter.z = input_click_pos.z * 100 + 150;
+//   int epicenterIdx = epicenter.z * W * H + epicenter.y * W + epicenter.x;
+//
+//   vec3 dir = input_dir;
+//   //dir.z = 0;
+//   printf("[click] %f %f %f\n", input_click_pos.x, input_click_pos.y, input_click_pos.z);
+//   printf("[dir] %f %f %f\n", dir.x, dir.y, dir.z);
+//
+//   int range = 5;
+//   float step = 1.0f / (range * 0.5);
+//
+//   int idx = 0;
+//   vec3 force = vec3(0.0f);
+//   for (int z = epicenter.z - range; z < epicenter.z; z++) {
+//      for (int y = epicenter.y - range; y < epicenter.y; y++) {
+//         for (int x = epicenter.x - range; x < epicenter.x; x++) {
+//            force.x += step;
+//            force.y += step;
+//            force.z += step;
+//            if (force.x > range) force.x = range;
+//            if (force.y > range) force.y = range;
+//            if (force.z > range) force.z = range;
+//            deform(x, y, z, dir, force);
+//         }
+//         for (int x = epicenter.x + 1; x <= epicenter.x + range; x++) {
+//            force.x -= step;
+//            force.y += step;
+//            force.z += step;
+//            if (force.x > range) force.x = range;
+//            if (force.y > range) force.y = range;
+//            if (force.z > range) force.z = range;
+//            deform(x, y, z, dir, force);
+//         }
+//      }
+//      for (int y = epicenter.y + 1; y <= epicenter.y + range; y++) {
+//         for (int x = epicenter.x - range; x < epicenter.x; x++) {
+//            force.x += step;
+//            force.y -= step;
+//            force.z += step;
+//            if (force.x > range) force.x = range;
+//            if (force.y > range) force.y = range;
+//            if (force.z > range) force.z = range;
+//            deform(x, y, z, dir, force);
+//         }
+//         for (int x = epicenter.x + 1; x <= epicenter.x + range; x++) {
+//            force.x -= step;
+//            force.y -= step;
+//            force.z += step;
+//            if (force.x > range) force.x = range;
+//            if (force.y > range) force.y = range;
+//            if (force.z > range) force.z = range;
+//            deform(x, y, z, dir, force);
+//         }
+//      }
+//   }
+//   for (int z = epicenter.z + 1; z <= epicenter.z + range; z++) {
+//      for (int y = epicenter.y - range; y < epicenter.y; y++) {
+//         for (int x = epicenter.x - range; x < epicenter.x; x++) {
+//            force.x += step;
+//            force.y += step;
+//            force.z -= step;
+//            if (force.x > range) force.x = range;
+//            if (force.y > range) force.y = range;
+//            if (force.z > range) force.z = range;
+//            deform(x, y, z, dir, force);
+//         }
+//         for (int x = epicenter.x + 1; x <= epicenter.x + range; x++) {
+//            force.x -= step;
+//            force.y += step;
+//            force.z -= step;
+//            if (force.x > range) force.x = range;
+//            if (force.y > range) force.y = range;
+//            if (force.z > range) force.z = range;
+//            deform(x, y, z, dir, force);
+//         }
+//      }
+//      for (int y = epicenter.y + 1; y <= epicenter.y + range; y++) {
+//         for (int x = epicenter.x - range; x < epicenter.x; x++) {
+//            force.x += step;
+//            force.y -= step;
+//            force.z -= step;
+//            if (force.x > range) force.x = range;
+//            if (force.y > range) force.y = range;
+//            if (force.z > range) force.z = range;
+//            deform(x, y, z, dir, force);
+//         }
+//         for (int x = epicenter.x + 1; x <= epicenter.x + range; x++) {
+//            force.x -= step;
+//            force.y -= step;
+//            force.z -= step;
+//            deform(x, y, z, dir, force);
+//         }
+//      }
+//   }
+//}
+
 void update_volume_data(vec3 input_click_pos, vec3 input_dir)
 {
 	vec3 epicenter = vec3(0.0f);
@@ -3055,7 +3181,7 @@ void Testbed::load_nerf(const fs::path& data_path) {
 	load_nerf_post();
 }
 
- void Testbed::update_density_grid_nerf(float decay, uint32_t n_uniform_density_grid_samples, uint32_t n_nonuniform_density_grid_samples, cudaStream_t stream) {
+void Testbed::update_density_grid_nerf(float decay, uint32_t n_uniform_density_grid_samples, uint32_t n_nonuniform_density_grid_samples, cudaStream_t stream) {
 	const uint32_t n_elements = NERF_GRID_N_CELLS() * (m_nerf.max_cascade + 1);
 
 	m_nerf.density_grid.resize(n_elements);
@@ -3402,6 +3528,10 @@ void Testbed::train_nerf(uint32_t target_batch_size, bool get_loss_scalar, cudaS
 				vec3 pos_gradient = m_nerf.training.cam_pos_gradient[i] * per_camera_loss_scale;
 				vec3 rot_gradient = m_nerf.training.cam_rot_gradient[i] * per_camera_loss_scale;
 
+				float l2_reg = m_nerf.training.extrinsic_l2_reg;
+				pos_gradient += m_nerf.training.cam_pos_offset[i].variable() * l2_reg;
+				rot_gradient += m_nerf.training.cam_rot_offset[i].variable() * l2_reg;
+
 				m_nerf.training.cam_pos_offset[i].set_learning_rate(std::max(m_nerf.training.extrinsic_learning_rate * std::pow(0.33f, (float)(m_nerf.training.cam_pos_offset[i].step() / 128)), m_optimizer->learning_rate() / 1000.0f));
 				m_nerf.training.cam_rot_offset[i].set_learning_rate(std::max(m_nerf.training.extrinsic_learning_rate * std::pow(0.33f, (float)(m_nerf.training.cam_rot_offset[i].step() / 128)), m_optimizer->learning_rate() / 1000.0f));
 
@@ -3425,6 +3555,8 @@ void Testbed::train_nerf(uint32_t target_batch_size, bool get_loss_scalar, cudaS
 			CUDA_CHECK_THROW(cudaMemcpyAsync(&m_nerf.training.cam_focal_length_gradient, m_nerf.training.cam_focal_length_gradient_gpu.data(), m_nerf.training.cam_focal_length_gradient_gpu.get_bytes(), cudaMemcpyDeviceToHost, stream));
 			CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
 			vec2 focal_length_gradient = m_nerf.training.cam_focal_length_gradient * per_camera_loss_scale;
+			float l2_reg = m_nerf.training.intrinsic_l2_reg;
+			focal_length_gradient += m_nerf.training.cam_focal_length_offset.variable() * l2_reg;
 			m_nerf.training.cam_focal_length_offset.set_learning_rate(std::max(1e-3f * std::pow(0.33f, (float)(m_nerf.training.cam_focal_length_offset.step() / 128)), m_optimizer->learning_rate() / 1000.0f));
 			m_nerf.training.cam_focal_length_offset.step(focal_length_gradient);
 			m_nerf.training.dataset.update_metadata();
@@ -3439,8 +3571,11 @@ void Testbed::train_nerf(uint32_t target_batch_size, bool get_loss_scalar, cudaS
 			for (uint32_t i = 0; i < m_nerf.training.n_images_for_training; ++i) {
 				vec3 gradient = m_nerf.training.cam_exposure_gradient[i] * per_camera_loss_scale;
 
+				float l2_reg = m_nerf.training.exposure_l2_reg;
+				gradient += m_nerf.training.cam_exposure[i].variable() * l2_reg;
 
 				m_nerf.training.cam_exposure[i].set_learning_rate(m_optimizer->learning_rate());
+				m_nerf.training.cam_exposure[i].step(gradient);
 
 				mean_exposure += m_nerf.training.cam_exposure[i].variable();
 			}
@@ -3499,6 +3634,7 @@ void Testbed::train_nerf_step(uint32_t target_batch_size, Testbed::NerfCounters&
 	Ray* rays_unnormalized = std::get<1>(scratch);
 	uint32_t* numsteps = std::get<2>(scratch);
 	float* coords = std::get<3>(scratch);
+	float* max_level = std::get<4>(scratch);
 	network_precision_t* mlp_out = std::get<5>(scratch);
 	network_precision_t* dloss_dmlp_out = std::get<6>(scratch);
 	float* coords_compacted = std::get<7>(scratch);
@@ -3530,9 +3666,9 @@ void Testbed::train_nerf_step(uint32_t target_batch_size, Testbed::NerfCounters&
 	// If we have an envmap, prepare its gradient buffer
 	float* envmap_gradient = m_nerf.training.train_envmap ? m_envmap.envmap->gradients() : nullptr;
 
-	bool sample_focal_plane_proportional_to_error = m_nerf.training.error_map.is_cdf_valid && false;
-	bool sample_image_proportional_to_error = m_nerf.training.error_map.is_cdf_valid && false;
-	bool include_sharpness_in_error = false;
+	bool sample_focal_plane_proportional_to_error = m_nerf.training.error_map.is_cdf_valid && m_nerf.training.sample_focal_plane_proportional_to_error;
+	bool sample_image_proportional_to_error = m_nerf.training.error_map.is_cdf_valid && m_nerf.training.sample_image_proportional_to_error;
+	bool include_sharpness_in_error = m_nerf.training.include_sharpness_in_error;
 	// This is low-overhead enough to warrant always being on.
 	// It makes for useful visualizations of the training error.
 	bool accumulate_error = true;
@@ -3558,6 +3694,8 @@ void Testbed::train_nerf_step(uint32_t target_batch_size, Testbed::NerfCounters&
 		m_nerf.training.transforms_gpu.data(),
 		m_nerf.density_grid_bitfield.data(),
 		m_nerf.max_cascade,
+		m_max_level_rand_training,
+		max_level,
 		m_nerf.training.snap_to_pixel_centers,
 		m_nerf.training.train_envmap,
 		m_nerf.cone_angle_constant,
@@ -3570,10 +3708,17 @@ void Testbed::train_nerf_step(uint32_t target_batch_size, Testbed::NerfCounters&
 		m_nerf_network->n_extra_dims()
 	);
 
+	if (hg_enc) {
+		hg_enc->set_max_level_gpu(m_max_level_rand_training ? max_level : nullptr);
+	}
+
 	GPUMatrix<float> coords_matrix((float*)coords, floats_per_coord, max_inference);
 	GPUMatrix<network_precision_t> rgbsigma_matrix(mlp_out, padded_output_width, max_inference);
 	m_network->inference_mixed_precision(stream, coords_matrix, rgbsigma_matrix, false);
 
+	if (hg_enc) {
+		hg_enc->set_max_level_gpu(m_max_level_rand_training ? max_level_compacted : nullptr);
+	}
 
 	linear_kernel(compute_loss_kernel_train_nerf, 0, stream,
 		counters.rays_per_batch,
@@ -3605,6 +3750,7 @@ void Testbed::train_nerf_step(uint32_t target_batch_size, Testbed::NerfCounters&
 		m_nerf.training.loss_type,
 		m_nerf.training.depth_loss_type,
 		counters.loss.data(),
+		m_max_level_rand_training,
 		max_level_compacted,
 		m_nerf.rgb_activation,
 		m_nerf.density_activation,
@@ -3706,7 +3852,7 @@ void Testbed::training_prep_nerf(uint32_t batch_size, cudaStream_t stream) {
 		return;
 	}
 
-	float alpha = 0.95;
+	float alpha = m_nerf.training.density_grid_decay;
 	uint32_t n_cascades = m_nerf.max_cascade + 1;
 
 	if (m_training_step < 256) {
