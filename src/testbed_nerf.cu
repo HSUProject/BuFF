@@ -2476,54 +2476,38 @@ void initialize_volume_data()
 	}
 }
 
-void deform(int x, int y, int z, vec3 dir, vec3 force)
-{
-	int idx = z * W * H + y * W + x;
-
-	dir.x *= force.x;
-	dir.y *= force.y;
-	dir.z *= force.z;
-
-	volume_data_host[idx] -= dir;
-}
-
 void update_volume_data(vec3 input_click_pos, vec3 input_dir)
 {
 	vec3 epicenter = vec3(0.0f);
 	epicenter.x = input_click_pos.x * 100 + 150;
 	epicenter.y = input_click_pos.y * 100 + 150;
 	epicenter.z = input_click_pos.z * 100 + 150;
-	int epicenterIdx = epicenter.z * W * H + epicenter.y * W + epicenter.x;
 
-	vec3 dir = input_dir;
-	//printf("[dir] %f %f %f\n", dir.x, dir.y, dir.z);
+	vec3 dir = vec3(0.0f);
+	float force = 1.7f;
+	//printf("[01] %f %f %f\n", input_dir.x, input_dir.y, input_dir.z);
+	dir.x = input_dir.x * force;
+	dir.y = input_dir.y * force;
+	dir.z = input_dir.z * force;
+	//printf("[02] %f %f %f\n", dir.x, dir.y, dir.z);
 
-	int range = 10;
-	float step = 1.0f / (range * 0.5);
-
-	int idx = 0;
-	vec3 force = vec3(0.0f);
-	for (int z = epicenter.z - range; z < epicenter.z; z++) {
-		force.z += step;
-		for (int y = epicenter.y - range; y < epicenter.y; y++) {
-			force.y += step;
-			for (int x = epicenter.x - range; x < epicenter.x; x++) {
-				force.x += step;
-				deform(x, y, z, dir, force);
-			}
-			for (int x = epicenter.x + 1; x <= epicenter.x + range; x++) {
-				deform(x, y, z, dir, force);
-				force.x -= step;
+	int range = 5;
+	for (int z = epicenter.z - range; z < epicenter.z + range; z++) {
+		for (int y = epicenter.y - range; y < epicenter.y + range; y++) {
+			for (int x = epicenter.x - range; x < epicenter.x + range; x++) {
+				int idx = z * W * H + y * W + x;
+				int idx2 = (z - (int)dir.z) * W * H + (y - (int)dir.y) * W + (x - (int)dir.x);
+				if (idx2 > W * H * D) idx2 = W * H * D - 1;
+				volume_data_host[idx] = volume_origin_host[idx2];
 			}
 		}
-		for (int y = epicenter.y + 1; y <= epicenter.y + range; y++) {
-			for (int x = epicenter.x - range; x < epicenter.x; x++) {
-				force.x += step;
-				deform(x, y, z, dir, force);
-			}
-			for (int x = epicenter.x + 1; x <= epicenter.x + range; x++) {
-				deform(x, y, z, dir, force);
-				force.x -= step;
+	}
+
+	for (int z = epicenter.z - range; z < epicenter.z + range; z++) {
+		for (int y = epicenter.y - range; y < epicenter.y + range; y++) {
+			for (int x = epicenter.x - range; x < epicenter.x + range; x++) {
+				int idx = z * W * H + y * W + x;
+				volume_origin_host[idx] = volume_data_host[idx];
 			}
 		}
 	}

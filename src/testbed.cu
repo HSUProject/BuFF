@@ -1630,11 +1630,7 @@ void Testbed::imgui() {
 	if (accum_reset) {
 		reset_accumulation();
 	}
-
-	if (ImGui::Button("Go to python REPL")) {
-		m_want_repl = true;
-	}
-
+	
 	ImGui::End();
 }
 
