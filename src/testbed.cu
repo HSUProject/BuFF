@@ -495,7 +495,7 @@ void Testbed::reset_camera() {
 }
 
 void Testbed::set_train(bool mtrain) {
-	if (m_train && !mtrain && m_max_level_rand_training) {
+	if (m_train && !mtrain) {
 		set_max_level(1.f);
 	}
 	m_train = mtrain;
@@ -897,7 +897,7 @@ void Testbed::imgui() {
 		ImGui::End();
 	}
 
-	ImGui::Begin("instant-ngp v" NGP_VERSION);
+	ImGui::Begin("BUFF v" NGP_VERSION);
 
 	size_t n_bytes = tcnn::total_n_bytes_allocated() + g_total_n_bytes_allocated;
 	if (m_dlss_provider) {
@@ -908,6 +908,24 @@ void Testbed::imgui() {
 	bool accum_reset = false;
 
 	if (!m_training_data_available) { ImGui::BeginDisabled(); }
+
+	if (ImGui::CollapsingHeader("Volume_data Editing", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
+		//여기
+		if (imgui_colored_button("Reset Volume_data", 0.f)) {
+			m_init_volume_data = false;
+		}
+		ImGui::Text("Revet Deform");
+		ImGui::SameLine();
+		if (ImGui::Button("<-")) {
+			m_revert_volume_data = true;
+		}
+		ImGui::SameLine(); // 앞으로가기 처리 필요 
+		if (ImGui::Button("->")) {
+			m_revert_volume_data = true;
+		}
+
+
+	}
 
 	if (ImGui::CollapsingHeader("Training", m_training_data_available ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
 		if (imgui_colored_button(m_train ? "Stop training" : "Start training", 0.4)) {
@@ -920,12 +938,6 @@ void Testbed::imgui() {
 			reload_network_from_file();
 		}
 
-		ImGui::SameLine();
-		ImGui::Checkbox("encoding", &m_train_encoding);
-		ImGui::SameLine();
-		ImGui::Checkbox("network", &m_train_network);
-		ImGui::SameLine();
-		ImGui::Checkbox("rand levels", &m_max_level_rand_training);
 		if (m_testbed_mode == ETestbedMode::Nerf) {
 			ImGui::Checkbox("envmap", &m_nerf.training.train_envmap);
 			ImGui::SameLine();
@@ -998,57 +1010,14 @@ void Testbed::imgui() {
 			ImGui::Combo("Density activation", (int*)&m_nerf.density_activation, NerfActivationStr);
 			ImGui::SliderFloat("Cone angle", &m_nerf.cone_angle_constant, 0.0f, 1.0f / 128.0f);
 			ImGui::SliderFloat("Depth supervision strength", &m_nerf.training.depth_supervision_lambda, 0.f, 1.f);
-
-			// Importance sampling options, but still related to training
-			ImGui::Checkbox("Sample focal plane ~error", &m_nerf.training.sample_focal_plane_proportional_to_error);
-			ImGui::SameLine();
-			ImGui::Checkbox("Sample focal plane ~sharpness", &m_nerf.training.include_sharpness_in_error);
-			ImGui::Checkbox("Sample image ~error", &m_nerf.training.sample_image_proportional_to_error);
-			ImGui::Text("%dx%d error res w/ %d steps between updates", m_nerf.training.error_map.resolution.x, m_nerf.training.error_map.resolution.y, m_nerf.training.n_steps_between_error_map_updates);
-			ImGui::Checkbox("Display error overlay", &m_nerf.training.render_error_overlay);
-			if (m_nerf.training.render_error_overlay) {
-				ImGui::SliderFloat("Error overlay brightness", &m_nerf.training.error_overlay_brightness, 0.f, 1.f);
-			}
-			ImGui::SliderFloat("Density grid decay", &m_nerf.training.density_grid_decay, 0.f, 1.f, "%.4f");
-			ImGui::SliderFloat("Extrinsic L2 reg.", &m_nerf.training.extrinsic_l2_reg, 1e-8f, 0.1f, "%.6f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			ImGui::SliderFloat("Intrinsic L2 reg.", &m_nerf.training.intrinsic_l2_reg, 1e-8f, 0.1f, "%.6f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			ImGui::SliderFloat("Exposure L2 reg.", &m_nerf.training.exposure_l2_reg, 1e-8f, 0.1f, "%.6f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			ImGui::TreePop();
-		}
-
-		if (m_testbed_mode == ETestbedMode::Sdf && ImGui::TreeNode("SDF training options")) {
-			accum_reset |= ImGui::Checkbox("Use octree for acceleration", &m_sdf.use_triangle_octree);
-			accum_reset |= ImGui::Combo("Mesh SDF mode", (int*)&m_sdf.mesh_sdf_mode, MeshSdfModeStr);
-
-			accum_reset |= ImGui::SliderFloat("Surface offset scale", &m_sdf.training.surface_offset_scale, 0.125f, 1024.0f, "%.4f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-
-			if (ImGui::Checkbox("Calculate IoU", &m_sdf.calculate_iou_online)) {
-				m_sdf.iou_decay = 0;
-			}
-
-			ImGui::SameLine();
-			ImGui::Text("%0.6f", m_sdf.iou);
-			ImGui::TreePop();
-		}
-
-		if (m_testbed_mode == ETestbedMode::Image && ImGui::TreeNode("Image training options")) {
-			ImGui::Combo("Training coords", (int*)&m_image.random_mode, RandomModeStr);
-			ImGui::Checkbox("Snap to pixel centers", &m_image.training.snap_to_pixel_centers);
-			accum_reset |= ImGui::Checkbox("Linear colors", &m_image.training.linear_colors);
-			ImGui::TreePop();
-		}
-
-		if (m_testbed_mode == ETestbedMode::Volume && ImGui::TreeNode("Volume training options")) {
-			accum_reset |= ImGui::SliderFloat("Albedo", &m_volume.albedo, 0.f, 1.f);
-			accum_reset |= ImGui::SliderFloat("Scattering", &m_volume.scattering, -2.f, 2.f);
-			accum_reset |= ImGui::SliderFloat("Distance scale", &m_volume.inv_distance_scale, 1.f, 100.f, "%.3g", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
 			ImGui::TreePop();
 		}
 	}
 
 	if (!m_training_data_available) { ImGui::EndDisabled(); }
 
-	if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
+	//if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) 창 열어두기
+	if (ImGui::CollapsingHeader("Rendering")) {
 		if (!m_hmd) {
 			if (ImGui::Button("Connect to VR/AR headset")) {
 				try {
@@ -1508,35 +1477,6 @@ void Testbed::imgui() {
 				, m_autofocus ? "True" : "False"
 			);
 
-			if (m_testbed_mode == ETestbedMode::Sdf) {
-				size_t n = strlen(buf);
-				snprintf(buf + n, sizeof(buf) - n,
-					"testbed.sdf.shadow_sharpness = %0.3f\n"
-					"testbed.sdf.analytic_normals = %s\n"
-					"testbed.sdf.use_triangle_octree = %s\n\n"
-					"testbed.sdf.brdf.metallic = %0.3f\n"
-					"testbed.sdf.brdf.subsurface = %0.3f\n"
-					"testbed.sdf.brdf.specular = %0.3f\n"
-					"testbed.sdf.brdf.roughness = %0.3f\n"
-					"testbed.sdf.brdf.sheen = %0.3f\n"
-					"testbed.sdf.brdf.clearcoat = %0.3f\n"
-					"testbed.sdf.brdf.clearcoat_gloss = %0.3f\n"
-					"testbed.sdf.brdf.basecolor = [%0.3f,%0.3f,%0.3f]\n\n"
-					, m_sdf.shadow_sharpness
-					, m_sdf.analytic_normals ? "True" : "False"
-					, m_sdf.use_triangle_octree ? "True" : "False"
-					, m_sdf.brdf.metallic
-					, m_sdf.brdf.subsurface
-					, m_sdf.brdf.specular
-					, m_sdf.brdf.roughness
-					, m_sdf.brdf.sheen
-					, m_sdf.brdf.clearcoat
-					, m_sdf.brdf.clearcoat_gloss
-					, m_sdf.brdf.basecolor.x
-					, m_sdf.brdf.basecolor.y
-					, m_sdf.brdf.basecolor.z
-				);
-			}
 			ImGui::InputTextMultiline("Params", buf, sizeof(buf));
 			ImGui::TreePop();
 		}
@@ -1679,63 +1619,6 @@ void Testbed::imgui() {
 		}
 	}
 
-	if (m_testbed_mode == ETestbedMode::Sdf) {
-		if (ImGui::CollapsingHeader("BRDF parameters")) {
-			accum_reset |= ImGui::ColorEdit3("Base color", (float*)&m_sdf.brdf.basecolor);
-			accum_reset |= ImGui::SliderFloat("Roughness", &m_sdf.brdf.roughness, 0.f, 1.f);
-			accum_reset |= ImGui::SliderFloat("Specular", &m_sdf.brdf.specular, 0.f, 1.f);
-			accum_reset |= ImGui::SliderFloat("Metallic", &m_sdf.brdf.metallic, 0.f, 1.f);
-			ImGui::Separator();
-			accum_reset |= ImGui::SliderFloat("Subsurface", &m_sdf.brdf.subsurface, 0.f, 1.f);
-			accum_reset |= ImGui::SliderFloat("Sheen", &m_sdf.brdf.sheen, 0.f, 1.f);
-			accum_reset |= ImGui::SliderFloat("Clearcoat", &m_sdf.brdf.clearcoat, 0.f, 1.f);
-			accum_reset |= ImGui::SliderFloat("Clearcoat gloss", &m_sdf.brdf.clearcoat_gloss, 0.f, 1.f);
-		}
-		m_sdf.brdf.ambientcolor = (m_background_color * m_background_color).rgb;
-	}
-
-	if (ImGui::CollapsingHeader("Histograms of encoding parameters")) {
-		ImGui::Checkbox("Gather histograms", &m_gather_histograms);
-
-		static float maxlevel = 1.f;
-		if (ImGui::SliderFloat("Max level", &maxlevel, 0.f, 1.f)) {
-			set_max_level(maxlevel);
-		}
-		ImGui::SameLine();
-		ImGui::Text("%0.1f%% values snapped to 0", m_quant_percent);
-
-		std::vector<float> f(m_n_levels);
-
-
-		// Hashgrid statistics
-		for (int i = 0; i < m_n_levels; ++i) {
-			f[i] = m_level_stats[i].mean();
-		}
-		ImGui::PlotHistogram("Grid means", f.data(), m_n_levels, 0, "means", FLT_MAX, FLT_MAX, ImVec2(0, 60.f));
-		for (int i = 0; i < m_n_levels; ++i) {
-			f[i] = m_level_stats[i].sigma();
-		}
-		ImGui::PlotHistogram("Grid sigmas", f.data(), m_n_levels, 0, "sigma", FLT_MAX, FLT_MAX, ImVec2(0, 60.f));
-		ImGui::Separator();
-
-
-		// Histogram of trained hashgrid params
-		ImGui::SliderInt("Show details for level", &m_histo_level, 0, m_n_levels - 1);
-		if (m_histo_level < m_n_levels) {
-			LevelStats& s = m_level_stats[m_histo_level];
-			static bool excludezero = false;
-			if (excludezero) {
-				m_histo[128] = 0.f;
-			}
-			ImGui::PlotHistogram("Values histogram", m_histo, 257, 0, "", FLT_MAX, FLT_MAX, ImVec2(0, 120.f));
-			ImGui::SliderFloat("Histogram horizontal scale", &m_histo_scale, 0.01f, 2.f);
-			ImGui::Checkbox("Exclude 'zero' from histogram", &excludezero);
-			ImGui::Text("Range: %0.5f - %0.5f", s.min, s.max);
-			ImGui::Text("Mean: %0.5f Sigma: %0.5f", s.mean(), s.sigma());
-			ImGui::Text("Num Zero: %d (%0.1f%%)", s.numzero, s.fraczero() * 100.f);
-		}
-	}
-
 	if (ImGui::BeginPopupModal("Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::Text("%s", imgui_error_string.c_str());
 		if (ImGui::Button("OK", ImVec2(120, 0))) {
@@ -1747,15 +1630,7 @@ void Testbed::imgui() {
 	if (accum_reset) {
 		reset_accumulation();
 	}
-
-	if (ImGui::Button("Go to python REPL")) {
-		m_want_repl = true;
-	}
-
-	if (ImGui::Button("Revert Deform")) {
-		m_revert_volume_data = true;
-	}
-
+	
 	ImGui::End();
 }
 
@@ -1924,10 +1799,7 @@ bool Testbed::keyboard_event() {
 	}
 
 	if (m_training_data_available) {
-		if (ImGui::IsKeyPressed('O')) {
-			m_nerf.training.render_error_overlay = !m_nerf.training.render_error_overlay;
-		}
-
+		
 		if (ImGui::IsKeyPressed('G')) {
 			m_render_ground_truth = !m_render_ground_truth;
 			reset_accumulation();
@@ -2254,7 +2126,7 @@ void Testbed::handle_user_input() {
 		mouse_drag();
 	}
 
-	if (m_testbed_mode == ETestbedMode::Nerf && (m_render_ground_truth || m_nerf.training.render_error_overlay)) {
+	if (m_testbed_mode == ETestbedMode::Nerf && m_render_ground_truth ){
 		// find nearest training view to current camera, and set it
 		int bestimage = find_best_training_view(-1);
 		if (bestimage >= 0) {
@@ -3484,18 +3356,10 @@ bool Testbed::frame() {
 
 
 	train_and_render(skip_rendering);
-	if (m_testbed_mode == ETestbedMode::Sdf && m_sdf.calculate_iou_online) {
-		m_sdf.iou = calculate_iou(m_train ? 64 * 64 * 64 : 128 * 128 * 128, m_sdf.iou_decay, false, true);
-		m_sdf.iou_decay = 0.f;
-	}
 
 #ifdef NGP_GUI
 	if (m_render_window) {
 		if (m_gui_redraw) {
-			if (m_gather_histograms) {
-				gather_histograms();
-			}
-
 			draw_gui();
 			m_gui_redraw = false;
 
@@ -3537,12 +3401,6 @@ bool Testbed::frame() {
 
 fs::path Testbed::training_data_path() const {
 	return m_data_path.with_extension("training");
-}
-
-bool Testbed::want_repl() {
-	bool b = m_want_repl;
-	m_want_repl = false;
-	return b;
 }
 
 void Testbed::apply_camera_smoothing(float elapsed_ms) {
@@ -4124,8 +3982,6 @@ void Testbed::train(uint32_t batch_size) {
 	while (leaf_optimizer_config->contains("nested")) {
 		leaf_optimizer_config = &(*leaf_optimizer_config)["nested"];
 	}
-	(*leaf_optimizer_config)["optimize_matrix_params"] = m_train_network;
-	(*leaf_optimizer_config)["optimize_non_matrix_params"] = m_train_encoding;
 	m_optimizer->update_hyperparams(m_network_config["optimizer"]);
 
 	bool get_loss_scalar = m_training_step % 16 == 0;
@@ -4632,27 +4488,6 @@ void Testbed::render_frame_epilogue(
 			}
 		}
 
-		// Visualize the accumulated error map if requested
-		if (m_nerf.training.render_error_overlay) {
-			const float* err_data = m_nerf.training.error_map.data.data();
-			ivec2 error_map_res = m_nerf.training.error_map.resolution;
-			if (m_render_ground_truth) {
-				err_data = m_nerf.training.dataset.sharpness_data.data();
-				error_map_res = m_nerf.training.dataset.sharpness_resolution;
-			}
-			size_t emap_size = error_map_res.x * error_map_res.y;
-			err_data += emap_size * m_nerf.training.view;
-
-			GPUMemory<float> average_error;
-			average_error.enlarge(1);
-			average_error.memset(0);
-			const float* aligned_err_data_s = (const float*)(((size_t)err_data) & ~15);
-			const float* aligned_err_data_e = (const float*)(((size_t)(err_data + emap_size)) & ~15);
-			size_t reduce_size = aligned_err_data_e - aligned_err_data_s;
-			reduce_sum(aligned_err_data_s, [reduce_size] __device__(float val) { return max(val, 0.f) / (reduce_size); }, average_error.data(), reduce_size, stream);
-			auto const& metadata = m_nerf.training.dataset.metadata[m_nerf.training.view];
-			render_buffer.overlay_false_color(metadata.resolution, to_srgb, m_fov_axis, stream, err_data, error_map_res, average_error.data(), m_nerf.training.error_overlay_brightness, m_render_ground_truth);
-		}
 	}
 
 #ifdef NGP_GUI
@@ -4732,53 +4567,6 @@ Testbed::LevelStats compute_level_stats(const float* params, size_t n_params) {
 		}
 	}
 	return s;
-}
-
-void Testbed::gather_histograms() {
-	if (!m_network) {
-		return;
-	}
-
-	int n_params = (int)m_network->n_params();
-	int first_encoder = first_encoder_param();
-	int n_encoding_params = n_params - first_encoder;
-
-	auto hg_enc = dynamic_cast<GridEncoding<network_precision_t>*>(m_encoding.get());
-	if (hg_enc && m_trainer->params()) {
-		std::vector<float> grid(n_encoding_params);
-
-		uint32_t m = m_network->layer_sizes().front().first;
-		uint32_t n = m_network->layer_sizes().front().second;
-		std::vector<float> first_layer_rm(m * n);
-
-		CUDA_CHECK_THROW(cudaMemcpyAsync(grid.data(), m_trainer->params() + first_encoder, grid.size() * sizeof(float), cudaMemcpyDeviceToHost, m_stream.get()));
-		CUDA_CHECK_THROW(cudaMemcpyAsync(first_layer_rm.data(), m_trainer->params(), first_layer_rm.size() * sizeof(float), cudaMemcpyDeviceToHost, m_stream.get()));
-		CUDA_CHECK_THROW(cudaStreamSynchronize(m_stream.get()));
-
-
-		for (int l = 0; l < m_n_levels; ++l) {
-			m_level_stats[l] = compute_level_stats(grid.data() + hg_enc->level_params_offset(l), hg_enc->level_n_params(l));
-		}
-
-		int numquant = 0;
-		m_quant_percent = float(numquant * 100) / (float)n_encoding_params;
-		if (m_histo_level < m_n_levels) {
-			size_t nperlevel = hg_enc->level_n_params(m_histo_level);
-			const float* d = grid.data() + hg_enc->level_params_offset(m_histo_level);
-			float scale = 128.f / (m_histo_scale); // fixed scale for now to make it more comparable between levels
-			memset(m_histo, 0, sizeof(m_histo));
-			for (int i = 0; i < nperlevel; ++i) {
-				float v = *d++;
-				if (v == 0.f) {
-					continue;
-				}
-				int bin = (int)floor(v * scale + 128.5f);
-				if (bin >= 0 && bin <= 256) {
-					m_histo[bin]++;
-				}
-			}
-		}
-	}
 }
 
 // Increment this number when making a change to the snapshot format
