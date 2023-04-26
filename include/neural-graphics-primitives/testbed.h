@@ -559,6 +559,8 @@ public:
 	vec3 m_input_click_pos = vec3(0.0f);
 	vec3 m_input_dir = vec3(0.0f);
 
+	bool m_revert_volume_data = false;
+
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 
 	// Rendering stuff
@@ -986,9 +988,6 @@ public:
 	Ema m_loss_scalar = { EEmaType::Time, 100 };
 	std::vector<float> m_loss_graph = std::vector<float>(256, 0.0f);
 	size_t m_loss_graph_samples = 0;
-
-	bool m_train_encoding = true;
-	bool m_train_network = true;
 
 	class CudaDevice {
 	public:

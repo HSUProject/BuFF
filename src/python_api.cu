@@ -414,7 +414,6 @@ PYBIND11_MODULE(pyngp, m) {
 		.def_readwrite("vr_use_hidden_area_mask", &Testbed::m_vr_use_hidden_area_mask)
 		.def_readwrite("vr_use_depth_reproject", &Testbed::m_vr_use_depth_reproject)
 #endif
-		.def("want_repl", &Testbed::want_repl, "returns true if the user clicked the 'I want a repl' button")
 		.def("frame", &Testbed::frame, py::call_guard<py::gil_scoped_release>(), "Process a single frame. Renders if a window was previously created.")
 		.def("render", &Testbed::render_to_cpu, "Renders an image at the requested resolution. Does not require a window.",
 			py::arg("width") = 1920,
@@ -487,8 +486,6 @@ PYBIND11_MODULE(pyngp, m) {
 		.def_readwrite("background_color", &Testbed::m_background_color)
 		.def_readwrite("render_transparency_as_checkerboard", &Testbed::m_render_transparency_as_checkerboard)
 		.def_readwrite("shall_train", &Testbed::m_train)
-		.def_readwrite("shall_train_encoding", &Testbed::m_train_encoding)
-		.def_readwrite("shall_train_network", &Testbed::m_train_network)
 		.def_readwrite("render_groundtruth", &Testbed::m_render_ground_truth)
 		.def_readwrite("render_ground_truth", &Testbed::m_render_ground_truth)
 		.def_readwrite("groundtruth_render_mode", &Testbed::m_ground_truth_render_mode)
@@ -527,7 +524,6 @@ PYBIND11_MODULE(pyngp, m) {
 		.def_readwrite("sun_dir", &Testbed::m_sun_dir)
 		.def_property("look_at", &Testbed::look_at, &Testbed::set_look_at)
 		.def_property("view_dir", &Testbed::view_dir, &Testbed::set_view_dir)
-		.def_readwrite("max_level_rand_training", &Testbed::m_max_level_rand_training)
 		.def_readwrite("visualized_dimension", &Testbed::m_visualized_dimension)
 		.def_readwrite("visualized_layer", &Testbed::m_visualized_layer)
 		.def_property_readonly("loss", [](py::object& obj) { return obj.cast<Testbed&>().m_loss_scalar.val(); })
@@ -655,15 +651,9 @@ PYBIND11_MODULE(pyngp, m) {
 		.def_readwrite("n_steps_between_cam_updates", &Testbed::Nerf::Training::n_steps_between_cam_updates)
 		.def_readwrite("sample_focal_plane_proportional_to_error", &Testbed::Nerf::Training::sample_focal_plane_proportional_to_error)
 		.def_readwrite("sample_image_proportional_to_error", &Testbed::Nerf::Training::sample_image_proportional_to_error)
-		.def_readwrite("include_sharpness_in_error", &Testbed::Nerf::Training::include_sharpness_in_error)
 		.def_readonly("transforms", &Testbed::Nerf::Training::transforms)
-		//.def_readonly("focal_lengths", &Testbed::Nerf::Training::focal_lengths) // use training.dataset.metadata instead
 		.def_readwrite("near_distance", &Testbed::Nerf::Training::near_distance)
-		.def_readwrite("density_grid_decay", &Testbed::Nerf::Training::density_grid_decay)
-		.def_readwrite("extrinsic_l2_reg", &Testbed::Nerf::Training::extrinsic_l2_reg)
 		.def_readwrite("extrinsic_learning_rate", &Testbed::Nerf::Training::extrinsic_learning_rate)
-		.def_readwrite("intrinsic_l2_reg", &Testbed::Nerf::Training::intrinsic_l2_reg)
-		.def_readwrite("exposure_l2_reg", &Testbed::Nerf::Training::exposure_l2_reg)
 		.def_readwrite("depth_supervision_lambda", &Testbed::Nerf::Training::depth_supervision_lambda)
 		.def_readonly("dataset", &Testbed::Nerf::Training::dataset)
 		.def("set_camera_intrinsics", &Testbed::Nerf::Training::set_camera_intrinsics,
@@ -703,7 +693,6 @@ PYBIND11_MODULE(pyngp, m) {
 		.def_readwrite("use_triangle_octree", &Testbed::Sdf::use_triangle_octree)
 		.def_readwrite("zero_offset", &Testbed::Sdf::zero_offset)
 		.def_readwrite("distance_scale", &Testbed::Sdf::distance_scale)
-		.def_readwrite("calculate_iou_online", &Testbed::Sdf::calculate_iou_online)
 		.def_readwrite("groundtruth_mode", &Testbed::Sdf::groundtruth_mode)
 		.def_readwrite("brick_level", &Testbed::Sdf::brick_level)
 		.def_readonly("brick_res", &Testbed::Sdf::brick_res)
