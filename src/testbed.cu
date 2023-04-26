@@ -1894,6 +1894,9 @@ bool Testbed::keyboard_event() {
 
 	if (ImGui::IsKeyPressed('Z')) {
 		m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
+		if (ctrl) {
+			m_revert_volume_data = true;
+		}
 	}
 
 	if (ImGui::IsKeyPressed('X')) {

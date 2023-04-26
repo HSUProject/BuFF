@@ -2638,21 +2638,29 @@ void update_volume_data(vec3 input_click_pos, vec3 input_dir)
 		}
 	}
 
+	int revert_idx_size = 30;
 	revert_idx++;
-	revert_click_pos[revert_idx] = epicenter;
-	revert_dir[revert_idx] = dir;
+	revert_click_pos[revert_idx % revert_idx_size] = epicenter;
+	revert_dir[revert_idx % revert_idx_size] = dir;
 }
 
 void revert_volume_data() {
+	int revert_idx_size = 30;
+
 	vec3 epicenter = vec3(0.0f);
-	epicenter.x = revert_click_pos[revert_idx].x;
-	epicenter.y = revert_click_pos[revert_idx].y;
-	epicenter.z = revert_click_pos[revert_idx].z;
+	epicenter.x = revert_click_pos[revert_idx % revert_idx_size].x;
+	epicenter.y = revert_click_pos[revert_idx % revert_idx_size].y;
+	epicenter.z = revert_click_pos[revert_idx % revert_idx_size].z;
+	if (epicenter == vec3(0.0f)) {
+		printf("original volume data\n");
+		revert_idx = -1;
+		return;
+	}
 
 	vec3 dir = vec3(0.0f);
-	dir.x = revert_dir[revert_idx].x;
-	dir.y = revert_dir[revert_idx].y;
-	dir.z = revert_dir[revert_idx].z;
+	dir.x = revert_dir[revert_idx % revert_idx_size].x;
+	dir.y = revert_dir[revert_idx % revert_idx_size].y;
+	dir.z = revert_dir[revert_idx % revert_idx_size].z;
 
 	int range = 5;
 	for (int z = epicenter.z - range; z < epicenter.z + range; z++) {
@@ -2675,8 +2683,8 @@ void revert_volume_data() {
 		}
 	}
 
-	revert_click_pos[revert_idx] = vec3(0.0f);
-	revert_dir[revert_idx] = vec3(0.0f);
+	revert_click_pos[revert_idx % revert_idx_size] = vec3(0.0f);
+	revert_dir[revert_idx % revert_idx_size] = vec3(0.0f);
 	revert_idx--;
 }
 
