@@ -560,6 +560,7 @@ public:
 	vec3 m_input_dir = vec3(0.0f);
 
 	bool m_revert_volume_data = false;
+	bool m_recovery_volume_data = false;
 
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 

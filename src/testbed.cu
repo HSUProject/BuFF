@@ -921,10 +921,8 @@ void Testbed::imgui() {
 		}
 		ImGui::SameLine(); // 앞으로가기 처리 필요 
 		if (ImGui::Button("->")) {
-			m_revert_volume_data = true;
+			m_recovery_volume_data = true;
 		}
-
-
 	}
 
 	if (ImGui::CollapsingHeader("Training", m_training_data_available ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
