@@ -661,124 +661,8 @@ bool imgui_colored_button(const char* name, float hue) {
 void Testbed::imgui() {
 	// If a GUI interaction causes an error, write that error to the following string and call
 	//   ImGui::OpenPopup("Error");
+
 	static std::string imgui_error_string = "";
-
-	m_picture_in_picture_res = 0;
-	if (ImGui::Begin("Camera path", 0, ImGuiWindowFlags_NoScrollbar)) {
-		if (ImGui::CollapsingHeader("Path manipulation", ImGuiTreeNodeFlags_DefaultOpen)) {
-			if (int read = m_camera_path.imgui(
-				m_imgui.cam_path_path,
-				m_render_ms.val(),
-				m_camera,
-				m_slice_plane_z,
-				m_scale,
-				fov(),
-				m_aperture_size,
-				m_bounding_radius,
-				!m_nerf.training.dataset.xforms.empty() ? m_nerf.training.dataset.xforms[0].start : mat4x3(1.0f),
-				m_nerf.glow_mode,
-				m_nerf.glow_y_cutoff
-			)) {
-				if (!m_camera_path.rendering) {
-					reset_accumulation(true);
-
-					if (m_camera_path.update_cam_from_path) {
-						set_camera_from_time(m_camera_path.play_time);
-
-						// A value of larger than 1 indicates that the camera path wants
-						// to override camera smoothing.
-						if (read > 1) {
-							m_smoothed_camera = m_camera;
-						}
-					}
-					else {
-						m_pip_render_buffer->reset_accumulation();
-					}
-				}
-			}
-
-			if (!m_camera_path.keyframes.empty()) {
-				float w = ImGui::GetContentRegionAvail().x;
-				if (m_camera_path.update_cam_from_path) {
-					m_picture_in_picture_res = 0;
-					ImGui::Image((ImTextureID)(size_t)m_rgba_render_textures.front()->texture(), ImVec2(w, w * 9.0f / 16.0f));
-				}
-				else {
-					m_picture_in_picture_res = (float)std::min((int(w) + 31) & (~31), 1920 / 4);
-					ImGui::Image((ImTextureID)(size_t)m_pip_render_texture->texture(), ImVec2(w, w * 9.0f / 16.0f));
-				}
-			}
-		}
-
-		if (!m_camera_path.keyframes.empty() && ImGui::CollapsingHeader("Export video", ImGuiTreeNodeFlags_DefaultOpen)) {
-			// Render a video
-			if (imgui_colored_button(m_camera_path.rendering ? "Abort rendering" : "Render video", 0.4)) {
-				m_camera_path.rendering = !m_camera_path.rendering;
-
-				if (!clear_tmp_dir()) {
-					imgui_error_string = "Failed to clear temporary directory 'tmp' to hold rendered images.";
-					ImGui::OpenPopup("Error");
-
-					m_camera_path.rendering = false;
-				}
-
-				if (m_camera_path.rendering) {
-					m_camera_path.render_start_time = std::chrono::steady_clock::now();
-					m_camera_path.update_cam_from_path = true;
-					m_camera_path.play_time = 0.0f;
-					m_camera_path.auto_play_speed = 1.0f;
-					m_camera_path.render_frame_idx = 0;
-
-					m_dlss = false;
-					m_train = false;
-
-					reset_accumulation(true);
-					set_camera_from_time(m_camera_path.play_time);
-					m_smoothed_camera = m_camera;
-				}
-				else {
-					m_camera_path.update_cam_from_path = false;
-					m_camera_path.play_time = 0.0f;
-					m_camera_path.auto_play_speed = 0.0f;
-				}
-			}
-
-			if (m_camera_path.rendering) {
-				ImGui::SameLine();
-
-				auto elapsed = std::chrono::steady_clock::now() - m_camera_path.render_start_time;
-
-				uint32_t progress = m_camera_path.render_frame_idx * m_camera_path.render_settings.spp + m_views.front().render_buffer->spp();
-				uint32_t goal = m_camera_path.render_settings.n_frames() * m_camera_path.render_settings.spp;
-				auto est_remaining = elapsed * (float)(goal - progress) / std::max(progress, 1u);
-
-				ImGui::Text("%s", fmt::format(
-					"Frame {}/{}, Elapsed: {}, Remaining: {}",
-					m_camera_path.render_frame_idx + 1,
-					m_camera_path.render_settings.n_frames(),
-					tlog::durationToString(std::chrono::steady_clock::now() - m_camera_path.render_start_time),
-					tlog::durationToString(est_remaining)
-				).c_str());
-			}
-
-			if (m_camera_path.rendering) { ImGui::BeginDisabled(); }
-
-			ImGui::InputText("File##Video file path", m_imgui.video_path, sizeof(m_imgui.video_path));
-			m_camera_path.render_settings.filename = m_imgui.video_path;
-
-			ImGui::InputInt2("Resolution", &m_camera_path.render_settings.resolution.x);
-			ImGui::InputFloat("Duration (seconds)", &m_camera_path.render_settings.duration_seconds);
-			ImGui::InputFloat("FPS (frames/second)", &m_camera_path.render_settings.fps);
-			ImGui::InputInt("SPP (samples/pixel)", &m_camera_path.render_settings.spp);
-			ImGui::SliderInt("Quality", &m_camera_path.render_settings.quality, 0, 10);
-
-			ImGui::SliderFloat("Shutter fraction", &m_camera_path.render_settings.shutter_fraction, 0.0f, 1.0f);
-
-			if (m_camera_path.rendering) { ImGui::EndDisabled(); }
-		}
-	}
-	ImGui::End();
-
 
 	bool train_extra_dims = m_nerf.training.dataset.n_extra_learnable_dims > 0;
 	if (train_extra_dims && m_nerf.training.n_images_for_training > 0) {
@@ -909,18 +793,17 @@ void Testbed::imgui() {
 
 	if (!m_training_data_available) { ImGui::BeginDisabled(); }
 
-	if (ImGui::CollapsingHeader("Volume_data Editing", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
-		//여기
+	if (ImGui::CollapsingHeader("Edit Volume data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
 		if (imgui_colored_button("Reset Volume_data", 0.f)) {
 			m_init_volume_data = false;
 		}
-		ImGui::Text("Revet Deform");
-		ImGui::SameLine();
-		if (ImGui::Button("<-")) {
+
+		if (ImGui::Button("Undo Deform")) {
 			m_revert_volume_data = true;
 		}
-		ImGui::SameLine(); // 앞으로가기 처리 필요 
-		if (ImGui::Button("->")) {
+		ImGui::SameLine();
+
+		if (ImGui::Button("Redo Deform")) {
 			m_recovery_volume_data = true;
 		}
 	}
@@ -934,34 +817,6 @@ void Testbed::imgui() {
 		ImGui::SameLine();
 		if (imgui_colored_button("Reset training", 0.f)) {
 			reload_network_from_file();
-		}
-
-		if (m_testbed_mode == ETestbedMode::Nerf) {
-			ImGui::Checkbox("envmap", &m_nerf.training.train_envmap);
-			ImGui::SameLine();
-			ImGui::Checkbox("extrinsics", &m_nerf.training.optimize_extrinsics);
-			ImGui::SameLine();
-			ImGui::Checkbox("distortion", &m_nerf.training.optimize_distortion);
-			ImGui::SameLine();
-			ImGui::Checkbox("per-image latents", &m_nerf.training.optimize_extra_dims);
-
-
-			static bool export_extrinsics_in_quat_format = true;
-			static bool extrinsics_have_been_optimized = false;
-
-			if (m_nerf.training.optimize_extrinsics) {
-				extrinsics_have_been_optimized = true;
-			}
-
-			if (extrinsics_have_been_optimized) {
-				if (imgui_colored_button("Export extrinsics", 0.4f)) {
-					m_nerf.training.export_camera_extrinsics(m_imgui.extrinsics_path, export_extrinsics_in_quat_format);
-				}
-
-				ImGui::SameLine();
-				ImGui::Checkbox("as quaternions", &export_extrinsics_in_quat_format);
-				ImGui::InputText("File##Extrinsics file path", m_imgui.extrinsics_path, sizeof(m_imgui.extrinsics_path));
-			}
 		}
 
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
@@ -1016,67 +871,6 @@ void Testbed::imgui() {
 
 	//if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) 창 열어두기
 	if (ImGui::CollapsingHeader("Rendering")) {
-		if (!m_hmd) {
-			if (ImGui::Button("Connect to VR/AR headset")) {
-				try {
-					init_vr();
-				}
-				catch (const std::runtime_error& e) {
-					imgui_error_string = e.what();
-					ImGui::OpenPopup("Error");
-				}
-			}
-		}
-		else {
-			if (ImGui::Button("Disconnect from VR/AR headset")) {
-				m_hmd.reset();
-				update_vr_performance_settings();
-			}
-			else if (ImGui::TreeNodeEx("VR/AR settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-				static int blend_mode_idx = 0;
-				const auto& supported_blend_modes = m_hmd->supported_environment_blend_modes();
-				if (supported_blend_modes.size() > 1) {
-					if (ImGui::Combo("Environment", &blend_mode_idx, m_hmd->supported_environment_blend_modes_imgui_string())) {
-						auto b = m_hmd->supported_environment_blend_modes().at(blend_mode_idx);
-						m_hmd->set_environment_blend_mode(b);
-						update_vr_performance_settings();
-					}
-				}
-
-				if (m_devices.size() > 1 && m_testbed_mode == ETestbedMode::Nerf) {
-					ImGui::Checkbox("Multi-GPU rendering (one per eye)", &m_use_aux_devices);
-				}
-
-				accum_reset |= ImGui::Checkbox("Depth-based reprojection", &m_vr_use_depth_reproject);
-				if (ImGui::Checkbox("Mask hidden display areas", &m_vr_use_hidden_area_mask)) {
-					accum_reset = true;
-					set_all_devices_dirty();
-				}
-				accum_reset |= ImGui::Checkbox("Foveated rendering", &m_foveated_rendering) && !m_dlss;
-				if (m_foveated_rendering) {
-					ImGui::SameLine();
-					ImGui::Text(": %.01fx", m_foveated_rendering_scaling);
-
-					if (ImGui::TreeNodeEx("Foveated rendering settings")) {
-						accum_reset |= ImGui::Checkbox("Dynamic", &m_dynamic_foveated_rendering) && !m_dlss;
-						ImGui::SameLine();
-						accum_reset |= ImGui::Checkbox("Visualize", &m_foveated_rendering_visualize) && !m_dlss;
-
-						if (m_dynamic_foveated_rendering) {
-							accum_reset |= ImGui::SliderFloat("Maximum scaling", &m_foveated_rendering_max_scaling, 1.0f, 16.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat) && !m_dlss;
-						}
-						else {
-							accum_reset |= ImGui::SliderFloat("Scaling", &m_foveated_rendering_scaling, 1.0f, 16.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat) && !m_dlss;
-						}
-
-						accum_reset |= ImGui::SliderFloat("Fovea diameter", &m_foveated_rendering_full_res_diameter, 0.1f, 0.9f) && !m_dlss;
-					}
-				}
-
-				ImGui::TreePop();
-			}
-		}
-
 		ImGui::Checkbox("Render", &m_render);
 		ImGui::SameLine();
 
@@ -1222,129 +1016,6 @@ void Testbed::imgui() {
 			m_edit_render_aabb = false;
 		}
 
-		if (ImGui::TreeNode("Advanced rendering options")) {
-			ImGui::SliderInt("Max spp", &m_max_spp, 0, 1024, "%d", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			accum_reset |= ImGui::Checkbox("Render transparency as checkerboard", &m_render_transparency_as_checkerboard);
-			accum_reset |= ImGui::Combo("Color space", (int*)&m_color_space, ColorSpaceStr);
-			accum_reset |= ImGui::Checkbox("Snap to pixel centers", &m_snap_to_pixel_centers);
-
-			ImGui::TreePop();
-		}
-
-		if (m_testbed_mode == ETestbedMode::Nerf && ImGui::TreeNode("NeRF rendering options")) {
-			if (m_nerf.training.dataset.has_light_dirs) {
-				vec3 light_dir = normalize(m_nerf.light_dir);
-				if (ImGui::TreeNodeEx("Light Dir (Polar)", ImGuiTreeNodeFlags_DefaultOpen)) {
-					float phi = atan2f(m_nerf.light_dir.x, m_nerf.light_dir.z);
-					float theta = asinf(m_nerf.light_dir.y);
-					bool spin = ImGui::SliderFloat("Light Dir Theta", &theta, -PI() / 2.0f, PI() / 2.0f);
-					spin |= ImGui::SliderFloat("Light Dir Phi", &phi, -PI(), PI());
-					if (spin) {
-						float sin_phi, cos_phi;
-						sincosf(phi, &sin_phi, &cos_phi);
-						float cos_theta = cosf(theta);
-						m_nerf.light_dir = { sin_phi * cos_theta,sinf(theta),cos_phi * cos_theta };
-						accum_reset = true;
-					}
-					ImGui::TreePop();
-				}
-
-				if (ImGui::TreeNode("Light Dir (Cartesian)")) {
-					accum_reset |= ImGui::SliderFloat("Light Dir X", ((float*)(&m_nerf.light_dir)) + 0, -1.0f, 1.0f);
-					accum_reset |= ImGui::SliderFloat("Light Dir Y", ((float*)(&m_nerf.light_dir)) + 1, -1.0f, 1.0f);
-					accum_reset |= ImGui::SliderFloat("Light Dir Z", ((float*)(&m_nerf.light_dir)) + 2, -1.0f, 1.0f);
-					ImGui::TreePop();
-				}
-			}
-
-			if (m_nerf.training.dataset.n_extra_learnable_dims) {
-				accum_reset |= ImGui::SliderInt("training image latent code for inference", (int*)&m_nerf.extra_dim_idx_for_inference, 0, m_nerf.training.dataset.n_images - 1);
-			}
-
-			accum_reset |= ImGui::Combo("Groundtruth render mode", (int*)&m_ground_truth_render_mode, GroundTruthRenderModeStr);
-			accum_reset |= ImGui::SliderFloat("Groundtruth alpha", &m_ground_truth_alpha, 0.0f, 1.0f, "%.02f", ImGuiSliderFlags_AlwaysClamp);
-
-			bool lens_changed = ImGui::Checkbox("Apply lens distortion", &m_nerf.render_with_lens_distortion);
-
-			if (m_nerf.render_with_lens_distortion) {
-				lens_changed |= ImGui::Combo("Lens mode", (int*)&m_nerf.render_lens.mode, LensModeStr);
-				if (m_nerf.render_lens.mode == ELensMode::OpenCV) {
-					accum_reset |= ImGui::InputFloat("k1", &m_nerf.render_lens.params[0], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("k2", &m_nerf.render_lens.params[1], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("p1", &m_nerf.render_lens.params[2], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("p2", &m_nerf.render_lens.params[3], 0.f, 0.f, "%.5f");
-				}
-				else if (m_nerf.render_lens.mode == ELensMode::OpenCVFisheye) {
-					accum_reset |= ImGui::InputFloat("k1", &m_nerf.render_lens.params[0], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("k2", &m_nerf.render_lens.params[1], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("k3", &m_nerf.render_lens.params[2], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("k4", &m_nerf.render_lens.params[3], 0.f, 0.f, "%.5f");
-				}
-				else if (m_nerf.render_lens.mode == ELensMode::FTheta) {
-					accum_reset |= ImGui::InputFloat("width", &m_nerf.render_lens.params[5], 0.f, 0.f, "%.0f");
-					accum_reset |= ImGui::InputFloat("height", &m_nerf.render_lens.params[6], 0.f, 0.f, "%.0f");
-					accum_reset |= ImGui::InputFloat("f_theta p0", &m_nerf.render_lens.params[0], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("f_theta p1", &m_nerf.render_lens.params[1], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("f_theta p2", &m_nerf.render_lens.params[2], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("f_theta p3", &m_nerf.render_lens.params[3], 0.f, 0.f, "%.5f");
-					accum_reset |= ImGui::InputFloat("f_theta p4", &m_nerf.render_lens.params[4], 0.f, 0.f, "%.5f");
-				}
-
-				if (lens_changed && !supports_dlss(m_nerf.render_lens.mode)) {
-					m_dlss = false;
-				}
-
-				accum_reset |= lens_changed;
-			}
-
-			accum_reset |= ImGui::SliderFloat("Min transmittance", &m_nerf.render_min_transmittance, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			ImGui::TreePop();
-		}
-
-		if (m_testbed_mode == ETestbedMode::Sdf && ImGui::TreeNode("SDF rendering options")) {
-			accum_reset |= ImGui::Combo("Ground Truth Rendering Mode", (int*)&m_sdf.groundtruth_mode,
-				"Raytraced Mesh\0"
-				"Sphere Traced Mesh\0"
-				"SDF Bricks\0"
-			);
-
-			if (m_sdf.groundtruth_mode == ESDFGroundTruthMode::SDFBricks) {
-				accum_reset |= ImGui::SliderInt("Brick octree Level", (int*)&m_sdf.brick_level, 1, 10);
-				accum_reset |= ImGui::Checkbox("Brick normals track octree Level", &m_sdf.brick_smooth_normals);
-				accum_reset |= ImGui::SliderInt("Brick quantize Bits", (int*)&m_sdf.brick_quantise_bits, 0, 16);
-			}
-
-			accum_reset |= ImGui::Checkbox("Analytic normals", &m_sdf.analytic_normals);
-			accum_reset |= ImGui::Checkbox("Floor", &m_floor_enable);
-
-			accum_reset |= ImGui::SliderFloat("Normals epsilon", &m_sdf.fd_normals_epsilon, 0.00001f, 0.1f, "%.6g", ImGuiSliderFlags_Logarithmic);
-			accum_reset |= ImGui::SliderFloat("Maximum distance", &m_sdf.maximum_distance, 0.00001f, 0.1f, "%.6g", ImGuiSliderFlags_Logarithmic);
-			accum_reset |= ImGui::SliderFloat("Shadow sharpness", &m_sdf.shadow_sharpness, 0.1f, 2048.0f, "%.6g", ImGuiSliderFlags_Logarithmic);
-
-			accum_reset |= ImGui::SliderFloat("Inflate (offset the zero set)", &m_sdf.zero_offset, -0.25f, 0.25f);
-			accum_reset |= ImGui::SliderFloat("Distance scale", &m_sdf.distance_scale, 0.25f, 1.f);
-
-			ImGui::TreePop();
-		}
-
-		if (m_testbed_mode == ETestbedMode::Image && ImGui::TreeNode("Image rendering options")) {
-			static bool quantize_to_byte = false;
-			static float mse = 0.0f;
-
-			if (imgui_colored_button("Compute PSNR", 0.4)) {
-				mse = compute_image_mse(quantize_to_byte);
-			}
-
-			float psnr = -10.0f * std::log(mse) / std::log(10.0f);
-
-			ImGui::SameLine();
-			ImGui::Text("%0.6f", psnr);
-			ImGui::SameLine();
-			ImGui::Checkbox("Quantize", &quantize_to_byte);
-
-			ImGui::TreePop();
-		}
-
 		if (ImGui::TreeNode("Debug visualization")) {
 			ImGui::Checkbox("Visualize unit cube", &m_visualize_unit_cube);
 			if (m_testbed_mode == ETestbedMode::Nerf) {
@@ -1416,7 +1087,7 @@ void Testbed::imgui() {
 		}
 	}
 
-	if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (ImGui::CollapsingHeader("Camera")) {
 		ImGui::Checkbox("First person controls", &m_fps_camera);
 		ImGui::SameLine();
 		ImGui::Checkbox("Smooth motion", &m_camera_smoothing);
@@ -1444,83 +1115,124 @@ void Testbed::imgui() {
 		if (ImGui::TreeNode("Advanced camera settings")) {
 			accum_reset |= ImGui::SliderFloat2("Screen center", &m_screen_center.x, 0.f, 1.f);
 			accum_reset |= ImGui::SliderFloat2("Parallax shift", &m_parallax_shift.x, -1.f, 1.f);
-			accum_reset |= ImGui::SliderFloat("Slice / focus depth", &m_slice_plane_z, -m_bounding_radius, m_bounding_radius);
-			accum_reset |= ImGui::SliderFloat("Render near distance", &m_render_near_distance, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			char buf[2048];
-			vec3 v = view_dir();
-			vec3 p = look_at();
-			vec3 s = m_sun_dir;
-			vec3 u = m_up_dir;
-			vec4 b = m_background_color;
-			snprintf(buf, sizeof(buf),
-				"testbed.background_color = [%0.3f, %0.3f, %0.3f, %0.3f]\n"
-				"testbed.exposure = %0.3f\n"
-				"testbed.sun_dir = [%0.3f,%0.3f,%0.3f]\n"
-				"testbed.up_dir = [%0.3f,%0.3f,%0.3f]\n"
-				"testbed.view_dir = [%0.3f,%0.3f,%0.3f]\n"
-				"testbed.look_at = [%0.3f,%0.3f,%0.3f]\n"
-				"testbed.scale = %0.3f\n"
-				"testbed.fov,testbed.aperture_size,testbed.slice_plane_z = %0.3f,%0.3f,%0.3f\n"
-				"testbed.autofocus_target = [%0.3f,%0.3f,%0.3f]\n"
-				"testbed.autofocus = %s\n\n"
-				, b.r, b.g, b.b, b.a
-				, m_exposure
-				, s.x, s.y, s.z
-				, u.x, u.y, u.z
-				, v.x, v.y, v.z
-				, p.x, p.y, p.z
-				, scale()
-				, fov(), m_aperture_size, m_slice_plane_z
-				, m_autofocus_target.x, m_autofocus_target.y, m_autofocus_target.z
-				, m_autofocus ? "True" : "False"
-			);
-
-			ImGui::InputTextMultiline("Params", buf, sizeof(buf));
 			ImGui::TreePop();
 		}
 	}
 
-	if (ImGui::CollapsingHeader("Snapshot", ImGuiTreeNodeFlags_DefaultOpen)) {
-		ImGui::Text("Snapshot");
-		ImGui::SameLine();
-		if (ImGui::Button("Save")) {
-			try {
-				save_snapshot(m_imgui.snapshot_path, m_include_optimizer_state_in_snapshot, m_compress_snapshot);
+	m_picture_in_picture_res = 0;
+
+	if (ImGui::CollapsingHeader("Camera Path manipulation")) {
+		if (int read = m_camera_path.imgui(
+			m_imgui.cam_path_path,
+			m_render_ms.val(),
+			m_camera,
+			m_slice_plane_z,
+			m_scale,
+			fov(),
+			m_aperture_size,
+			m_bounding_radius,
+			!m_nerf.training.dataset.xforms.empty() ? m_nerf.training.dataset.xforms[0].start : mat4x3(1.0f),
+			m_nerf.glow_mode,
+			m_nerf.glow_y_cutoff
+		)) {
+			if (!m_camera_path.rendering) {
+				reset_accumulation(true);
+
+				if (m_camera_path.update_cam_from_path) {
+					set_camera_from_time(m_camera_path.play_time);
+
+					// A value of larger than 1 indicates that the camera path wants
+					// to override camera smoothing.
+					if (read > 1) {
+						m_smoothed_camera = m_camera;
+					}
+				}
+				else {
+					m_pip_render_buffer->reset_accumulation();
+				}
 			}
-			catch (std::exception& e) {
-				imgui_error_string = fmt::format("Failed to save snapshot: {}", e.what());
-				ImGui::OpenPopup("Error");
-			}
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Load")) {
-			try {
-				load_snapshot(m_imgui.snapshot_path);
-			}
-			catch (std::exception& e) {
-				imgui_error_string = fmt::format("Failed to load snapshot: {}", e.what());
-				ImGui::OpenPopup("Error");
-			}
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Dump parameters as images")) {
-			dump_parameters_as_images(m_trainer->params(), "params");
 		}
 
-		ImGui::SameLine();
-		ImGui::Checkbox("w/ optimizer state", &m_include_optimizer_state_in_snapshot);
-		ImGui::InputText("File##Snapshot file path", m_imgui.snapshot_path, sizeof(m_imgui.snapshot_path));
-		ImGui::SameLine();
-
-		bool can_compress = ends_with_case_insensitive(m_imgui.snapshot_path, ".ingp");
-
-		if (!can_compress) {
-			ImGui::BeginDisabled();
-			m_compress_snapshot = false;
+		if (!m_camera_path.keyframes.empty()) {
+			float w = ImGui::GetContentRegionAvail().x;
+			if (m_camera_path.update_cam_from_path) {
+				m_picture_in_picture_res = 0;
+				ImGui::Image((ImTextureID)(size_t)m_rgba_render_textures.front()->texture(), ImVec2(w, w * 9.0f / 16.0f));
+			}
+			else {
+				m_picture_in_picture_res = (float)std::min((int(w) + 31) & (~31), 1920 / 4);
+				ImGui::Image((ImTextureID)(size_t)m_pip_render_texture->texture(), ImVec2(w, w * 9.0f / 16.0f));
+			}
 		}
-		ImGui::Checkbox("Compress", &m_compress_snapshot);
-		if (!can_compress) ImGui::EndDisabled();
 	}
+
+	if (!m_camera_path.keyframes.empty() && ImGui::CollapsingHeader("Export video", ImGuiTreeNodeFlags_DefaultOpen)) {
+		// Render a video
+		if (imgui_colored_button(m_camera_path.rendering ? "Abort rendering" : "Render video", 0.4)) {
+			m_camera_path.rendering = !m_camera_path.rendering;
+
+			if (!clear_tmp_dir()) {
+				imgui_error_string = "Failed to clear temporary directory 'tmp' to hold rendered images.";
+				ImGui::OpenPopup("Error");
+
+				m_camera_path.rendering = false;
+			}
+
+			if (m_camera_path.rendering) {
+				m_camera_path.render_start_time = std::chrono::steady_clock::now();
+				m_camera_path.update_cam_from_path = true;
+				m_camera_path.play_time = 0.0f;
+				m_camera_path.auto_play_speed = 1.0f;
+				m_camera_path.render_frame_idx = 0;
+
+				m_dlss = false;
+				m_train = false;
+
+				reset_accumulation(true);
+				set_camera_from_time(m_camera_path.play_time);
+				m_smoothed_camera = m_camera;
+			}
+			else {
+				m_camera_path.update_cam_from_path = false;
+				m_camera_path.play_time = 0.0f;
+				m_camera_path.auto_play_speed = 0.0f;
+			}
+		}
+
+		if (m_camera_path.rendering) {
+			ImGui::SameLine();
+
+			auto elapsed = std::chrono::steady_clock::now() - m_camera_path.render_start_time;
+
+			uint32_t progress = m_camera_path.render_frame_idx * m_camera_path.render_settings.spp + m_views.front().render_buffer->spp();
+			uint32_t goal = m_camera_path.render_settings.n_frames() * m_camera_path.render_settings.spp;
+			auto est_remaining = elapsed * (float)(goal - progress) / std::max(progress, 1u);
+
+			ImGui::Text("%s", fmt::format(
+				"Frame {}/{}, Elapsed: {}, Remaining: {}",
+				m_camera_path.render_frame_idx + 1,
+				m_camera_path.render_settings.n_frames(),
+				tlog::durationToString(std::chrono::steady_clock::now() - m_camera_path.render_start_time),
+				tlog::durationToString(est_remaining)
+			).c_str());
+		}
+
+		if (m_camera_path.rendering) { ImGui::BeginDisabled(); }
+
+		ImGui::InputText("File##Video file path", m_imgui.video_path, sizeof(m_imgui.video_path));
+		m_camera_path.render_settings.filename = m_imgui.video_path;
+
+		ImGui::InputInt2("Resolution", &m_camera_path.render_settings.resolution.x);
+		ImGui::InputFloat("Duration (seconds)", &m_camera_path.render_settings.duration_seconds);
+		ImGui::InputFloat("FPS (frames/second)", &m_camera_path.render_settings.fps);
+		ImGui::InputInt("SPP (samples/pixel)", &m_camera_path.render_settings.spp);
+		ImGui::SliderInt("Quality", &m_camera_path.render_settings.quality, 0, 10);
+
+		ImGui::SliderFloat("Shutter fraction", &m_camera_path.render_settings.shutter_fraction, 0.0f, 1.0f);
+
+		if (m_camera_path.rendering) { ImGui::EndDisabled(); }
+	}
+
 
 	if (m_testbed_mode == ETestbedMode::Nerf || m_testbed_mode == ETestbedMode::Sdf) {
 		if (ImGui::CollapsingHeader("Export mesh / volume / slices")) {
