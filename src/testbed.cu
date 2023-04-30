@@ -801,9 +801,10 @@ void Testbed::imgui() {
 		if (ImGui::Button("Undo Deform")) {
 			m_revert_volume_data = true;
 		}
-		ImGui::SameLine(); // 앞으로가기 처리 필요 
+		ImGui::SameLine();
+
 		if (ImGui::Button("Redo Deform")) {
-			m_revert_volume_data = true;
+			m_recovery_volume_data = true;
 		}
 	}
 
@@ -1478,6 +1479,9 @@ bool Testbed::keyboard_event() {
 
 	if (ImGui::IsKeyPressed('Z')) {
 		m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
+		if (ctrl) {
+			m_revert_volume_data = true;
+		}
 	}
 
 	if (ImGui::IsKeyPressed('X')) {
