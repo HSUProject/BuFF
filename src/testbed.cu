@@ -795,7 +795,7 @@ void Testbed::imgui() {
 
 	if (ImGui::CollapsingHeader("Edit Volume Data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
 		if (imgui_colored_button("Reset Volume Data", 0.f)) {
-			m_init_volume = false;
+			m_reset_deform = true;
 		}
 
 		if (ImGui::Button("Undo Deform")) {

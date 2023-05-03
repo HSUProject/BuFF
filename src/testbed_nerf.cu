@@ -2550,6 +2550,10 @@ void generate_volume()
 		pos.y = -1.5;
 		pos.z += step;
 	}
+
+	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol, h_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
+	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_buf, h_vol_buf, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
+	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_deform_area, h_vol_deform_area, VOL_SIZE * sizeof(bool), cudaMemcpyHostToDevice), stream);
 }
 
 void initialize_volume(cudaStream_t stream)
@@ -2567,10 +2571,6 @@ void initialize_volume(cudaStream_t stream)
 	undo_dir = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
 	redo_pos = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
 	redo_dir = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
-
-	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol, h_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
-	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_buf, h_vol_buf, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
-	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_deform_area, h_vol_deform_area, VOL_SIZE * sizeof(bool), cudaMemcpyHostToDevice), stream);
 }
 
 void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir)
@@ -2734,7 +2734,11 @@ void Testbed::render_nerf(
 				m_input_dir = vec3(0.0f);
 				m_update_volume = false;
 			}
+			if (m_reset_deform) {
 
+				generate_volume();
+				m_reset_deform = false;
+			}
 			if (m_undo_deform) {
 				if (undo_idx >= 0) {
 					undo_deformation(stream);
