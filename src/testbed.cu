@@ -793,18 +793,18 @@ void Testbed::imgui() {
 
 	if (!m_training_data_available) { ImGui::BeginDisabled(); }
 
-	if (ImGui::CollapsingHeader("Edit Volume data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
-		if (imgui_colored_button("Reset Volume_data", 0.f)) {
-			m_init_volume_data = false;
+	if (ImGui::CollapsingHeader("Edit Volume Data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
+		if (imgui_colored_button("Reset Volume Data", 0.f)) {
+			m_init_volume = false;
 		}
 
 		if (ImGui::Button("Undo Deform")) {
-			m_revert_volume_data = true;
+			m_undo_deform = true;
 		}
 		ImGui::SameLine();
 
 		if (ImGui::Button("Redo Deform")) {
-			m_recovery_volume_data = true;
+			m_redo_deform = true;
 		}
 	}
 
@@ -1340,7 +1340,7 @@ void Testbed::imgui() {
 	if (accum_reset) {
 		reset_accumulation();
 	}
-	
+
 	ImGui::End();
 }
 
@@ -1480,7 +1480,7 @@ bool Testbed::keyboard_event() {
 	if (ImGui::IsKeyPressed('Z')) {
 		m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
 		if (ctrl) {
-			m_revert_volume_data = true;
+			m_undo_deform = true;
 		}
 	}
 
@@ -1512,7 +1512,7 @@ bool Testbed::keyboard_event() {
 	}
 
 	if (m_training_data_available) {
-		
+
 		if (ImGui::IsKeyPressed('G')) {
 			m_render_ground_truth = !m_render_ground_truth;
 			reset_accumulation();
@@ -1716,7 +1716,7 @@ void Testbed::mouse_drag() {
 
 	// Left Released
 	if (ImGui::GetIO().MouseReleased[0]) {
-		m_update_volume_data = true;
+		m_update_volume = true;
 	}
 
 	// ------------------------------------------ UPDATE ------------------------------------------
@@ -1751,7 +1751,7 @@ void Testbed::mouse_drag() {
 			// Drag to create a new vector space for deformation
 			ivec2 clicked_mouse_pos = { ImGui::GetIO().MouseClickedPos[0].x, ImGui::GetIO().MouseClickedPos[0].y };
 
-			m_input_click_pos = get_3d_pos_from_pixel(*m_views.front().render_buffer, clicked_mouse_pos);
+			m_input_pos = get_3d_pos_from_pixel(*m_views.front().render_buffer, clicked_mouse_pos);
 			m_input_dir = convert_input_dir_to_world(clicked_mouse_pos, mouse, m_camera);
 
 			reset_accumulation(true);
@@ -1839,7 +1839,7 @@ void Testbed::handle_user_input() {
 		mouse_drag();
 	}
 
-	if (m_testbed_mode == ETestbedMode::Nerf && m_render_ground_truth ){
+	if (m_testbed_mode == ETestbedMode::Nerf && m_render_ground_truth) {
 		// find nearest training view to current camera, and set it
 		int bestimage = find_best_training_view(-1);
 		if (bestimage >= 0) {
@@ -4590,4 +4590,3 @@ void Testbed::set_loop_animation(bool value) {
 }
 
 NGP_NAMESPACE_END
-
