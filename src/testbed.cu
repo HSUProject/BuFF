@@ -806,6 +806,11 @@ void Testbed::imgui() {
 		if (ImGui::Button("Redo Deform")) {
 			m_recovery_volume_data = true;
 		}
+
+		ImGui::SameLine();
+		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
+		ImGui::SliderFloat("Target FPS", &m_dynamic_res_target_fps, 2.0f, 144.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::PopItemWidth();
 	}
 
 	if (ImGui::CollapsingHeader("Training", m_training_data_available ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
@@ -905,17 +910,6 @@ void Testbed::imgui() {
 #endif
 			ImGui::EndDisabled();
 		}
-
-		ImGui::Checkbox("Dynamic resolution", &m_dynamic_res);
-		ImGui::SameLine();
-		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
-		if (m_dynamic_res) {
-			ImGui::SliderFloat("Target FPS", &m_dynamic_res_target_fps, 2.0f, 144.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-		}
-		else {
-			ImGui::SliderInt("Resolution factor", &m_fixed_res_factor, 8, 64);
-		}
-		ImGui::PopItemWidth();
 
 		accum_reset |= ImGui::Combo("Render mode", (int*)&m_render_mode, RenderModeStr);
 		accum_reset |= ImGui::Combo("Tonemap curve", (int*)&m_tonemap_curve, TonemapCurveStr);
