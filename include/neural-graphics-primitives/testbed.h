@@ -559,6 +559,7 @@ public:
 	vec3 m_input_pos = vec3(0.0f);
 	vec3 m_input_dir = vec3(0.0f);
 
+	bool m_reset_deform = false;
 	bool m_undo_deform = false;
 	bool m_redo_deform = false;
 
