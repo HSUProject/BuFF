@@ -927,7 +927,6 @@ __global__ void generate_deformed_volume(
 	if (i >= vol_size) return;
 
 	if (!vol_deform_area[i]) return;
-
 	// Convert index to position to apply deformation
 	vec3 pos = vec3(0.0f);
 	pos.x = vol[i].x;
@@ -935,9 +934,9 @@ __global__ void generate_deformed_volume(
 	pos.z = vol[i].z;
 
 	// Convert position back to index
-	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET - dir.x;
-	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET - dir.y;
-	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET - dir.z;
+	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1 - (int)dir.x;
+	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1 - (int)dir.y;
+	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1 - (int)dir.z;
 	
 	int deformed_idx = z * VOLX * VOLY + y * VOLX + x;
 
@@ -2298,19 +2297,19 @@ void Testbed::NerfTracer::init_rays_from_camera(
 	CUDA_CHECK_THROW(cudaMemsetAsync(m_rays[0].rgba, 0, m_n_rays_initialized * sizeof(vec4), stream));
 	CUDA_CHECK_THROW(cudaMemsetAsync(m_rays[0].depth, 0, m_n_rays_initialized * sizeof(float), stream));
 
-	linear_kernel(advance_pos_nerf_kernel, 0, stream,
-		m_n_rays_initialized,
-		render_aabb,
-		render_aabb_to_local,
-		camera_matrix1[2],
-		focal_length,
-		sample_index,
-		m_rays[0].payload,
-		grid,
-		(show_accel >= 0) ? show_accel : 0,
-		max_mip,
-		cone_angle_constant
-	);
+	//linear_kernel(advance_pos_nerf_kernel, 0, stream,
+	//	m_n_rays_initialized,
+	//	render_aabb,
+	//	render_aabb_to_local,
+	//	camera_matrix1[2],
+	//	focal_length,
+	//	sample_index,
+	//	m_rays[0].payload,
+	//	grid,
+	//	(show_accel >= 0) ? show_accel : 0,
+	//	max_mip,
+	//	cone_angle_constant
+	//);
 }
 
 uint32_t Testbed::NerfTracer::trace(
@@ -2573,6 +2572,40 @@ void initialize_volume(cudaStream_t stream)
 	redo_dir = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
 }
 
+void deform_volume_origin(cudaStream_t stream, vec3 pos, vec3 dir)
+{
+	// Set area of deformation
+	int range = 5;
+	for (int z = pos.z - range; z < pos.z + range; z++) {
+		for (int y = pos.y - range; y < pos.y + range; y++) {
+			for (int x = pos.x - range; x < pos.x + range; x++) {
+				int idx = z * VOLX * VOLY + y * VOLX + x;
+				int idx2 = (z - (int)dir.z) * VOLX * VOLY + (y - (int)dir.y) * VOLX + (x - (int)dir.x);
+				//printf("[01] %d %d\n", idx, idx2);
+				//printf("[01] %d : %d, %d, %d\n", idx, x, y, z);
+				// Check for out of bounds
+				if (idx >= 0 && idx < VOL_SIZE) {
+					h_vol[idx] = h_vol_buf[idx2];
+				}
+			}
+		}
+	}
+
+	for (int z = pos.z - range; z < pos.z + range; z++) {
+		for (int y = pos.y - range; y < pos.y + range; y++) {
+			for (int x = pos.x - range; x < pos.x + range; x++) {
+				int idx = z * VOLX * VOLY + y * VOLX + x;
+				// Check for out of bounds
+				if (idx >= 0 && idx < VOL_SIZE) {
+					h_vol_buf[idx] = h_vol[idx];
+				}
+			}
+		}
+	}
+	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol, h_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
+	CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
+}
+
 void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir)
 {
 	// Set area of deformation
@@ -2622,7 +2655,7 @@ void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir)
 	epicenter.z = input_pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
 	vec3 dir = vec3(0.0f);
-	float force = 1.5;
+	float force = 1.5f;
 	dir.x = input_dir.x * force;
 	dir.y = input_dir.y * force;
 	dir.z = input_dir.z * force;
@@ -2660,8 +2693,8 @@ void undo_deformation(cudaStream_t stream) {
 	deform_volume(stream, epicenter, dir);
 
 	redo_idx++;
-	redo_pos[redo_idx % STACK_BUF_SIZE] = undo_pos[undo_idx];
-	redo_dir[redo_idx % STACK_BUF_SIZE] = undo_dir[undo_idx];
+	redo_pos[redo_idx % STACK_BUF_SIZE] = undo_pos[undo_idx % STACK_BUF_SIZE];
+	redo_dir[redo_idx % STACK_BUF_SIZE] = undo_dir[undo_idx % STACK_BUF_SIZE];
 	undo_pos[undo_idx % STACK_BUF_SIZE] = vec3(0.0f);
 	undo_dir[undo_idx % STACK_BUF_SIZE] = vec3(0.0f);
 	undo_idx--;
@@ -2684,8 +2717,8 @@ void redo_deformation(cudaStream_t stream) {
 	deform_volume(stream, epicenter, dir);
 
 	undo_idx++;
-	undo_pos[undo_idx % STACK_BUF_SIZE] = redo_pos[redo_idx];
-	undo_dir[undo_idx % STACK_BUF_SIZE] = redo_dir[redo_idx];
+	undo_pos[undo_idx % STACK_BUF_SIZE] = redo_pos[redo_idx % STACK_BUF_SIZE];
+	undo_dir[undo_idx % STACK_BUF_SIZE] = redo_dir[redo_idx % STACK_BUF_SIZE];
 	redo_pos[redo_idx % STACK_BUF_SIZE] = vec3(0.0f);
 	redo_dir[redo_idx % STACK_BUF_SIZE] = vec3(0.0f);
 	redo_idx--;
@@ -2723,6 +2756,15 @@ void Testbed::render_nerf(
 	if (!m_train) {
 		if (!m_init_volume) {
 			initialize_volume(stream);
+			// Clear stack buffer
+			for (int i = 0; i < STACK_BUF_SIZE; i++) {
+				redo_dir[i] = vec3(0.0f);
+				redo_pos[i] = vec3(0.0f);
+				undo_dir[i] = vec3(0.0f);
+				undo_pos[i] = vec3(0.0f);
+			}
+			redo_idx = -1;
+			undo_idx = -1;
 			m_init_volume = true;
 		}
 		else {
@@ -2735,7 +2777,6 @@ void Testbed::render_nerf(
 				m_update_volume = false;
 			}
 			if (m_reset_deform) {
-
 				generate_volume();
 				m_reset_deform = false;
 			}
