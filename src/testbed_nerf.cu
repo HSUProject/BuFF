@@ -933,15 +933,20 @@ __global__ void generate_deformed_volume(
 	pos.y = vol[i].y;
 	pos.z = vol[i].z;
 
+	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
+	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
+	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
+
 	// Convert position back to index
-	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1 - (int)dir.x;
-	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1 - (int)dir.y;
-	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1 - (int)dir.z;
-	
-	int deformed_idx = z * VOLX * VOLY + y * VOLX + x;
+	int deformX = x - (int)dir.x;
+	int deformY = y - (int)dir.y;
+	int deformZ = z - (int)dir.z;
+
+	int idx = z * VOLX * VOLY + y * VOLX + x;
+	int deformed_idx = deformZ * VOLX * VOLY + deformY * VOLX + deformX;
 
 	// Copy deform data to buffer
-	vol_buf[i] = vol[deformed_idx];
+	vol_buf[idx] = vol[deformed_idx];
 }
 
 __global__ void copy_deformed_volume(
@@ -955,8 +960,19 @@ __global__ void copy_deformed_volume(
 
 	if (!vol_deform_area[i]) return;
 
+	vec3 pos = vec3(0.0f);
+	pos.x = vol[i].x;
+	pos.y = vol[i].y;
+	pos.z = vol[i].z;
+
+	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
+	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
+	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
+
+	int idx = z * VOLX * VOLY + y * VOLX + x;
+
 	// Copy buffer to origin
-	vol[i] = vol_buf[i];
+	vol[idx] = vol_buf[idx];
 
 	// Reset area of deformation
 	vol_deform_area[i] = false;
@@ -2581,8 +2597,6 @@ void deform_volume_origin(cudaStream_t stream, vec3 pos, vec3 dir)
 			for (int x = pos.x - range; x < pos.x + range; x++) {
 				int idx = z * VOLX * VOLY + y * VOLX + x;
 				int idx2 = (z - (int)dir.z) * VOLX * VOLY + (y - (int)dir.y) * VOLX + (x - (int)dir.x);
-				//printf("[01] %d %d\n", idx, idx2);
-				//printf("[01] %d : %d, %d, %d\n", idx, x, y, z);
 				// Check for out of bounds
 				if (idx >= 0 && idx < VOL_SIZE) {
 					h_vol[idx] = h_vol_buf[idx2];
