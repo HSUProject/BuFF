@@ -36,7 +36,6 @@
 #include <filesystem/directory.h>
 #include <filesystem/path.h>
 
-
 #ifdef copysign
 #undef copysign
 #endif
@@ -705,13 +704,14 @@ __global__ void bitfield_max_pool(const uint32_t n_elements,
 
 //----------------------------------------------------UPDATE----------------------------------------------------
 
-constexpr int VOLX = 401; // width
-constexpr int VOLY = 401; // height
-constexpr int VOLZ = 401; // depth
+// Volume Data
+constexpr int VOLX = 201; // width
+constexpr int VOLY = 201; // height
+constexpr int VOLZ = 201; // depth
 
 constexpr int VOL_SIZE = VOLX * VOLY * VOLZ;
-constexpr int VOL_SIZE_DIGIT = 100;
-constexpr int VOL_SIZE_OFFSET = 150;
+constexpr int VOL_SIZE_DIGIT = 50;
+constexpr int VOL_SIZE_OFFSET = 75;
 
 vec3* h_vol = nullptr; // CPU
 vec3* h_vol_buf = nullptr; // CPU Buffer
@@ -721,6 +721,14 @@ vec3* d_vol = nullptr; // GPU
 vec3* d_vol_buf = nullptr; // GPU Buffer
 bool* d_vol_deform_area = nullptr; // GPU
 
+// Texture
+float4* d_tex_vol = nullptr;
+cudaExtent volExtent = { VOLX, VOLY, VOLZ };
+cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float4>();
+cudaArray* d_cuArr = nullptr;
+cudaTextureObject_t tex;
+
+// Stack Buffer
 constexpr int STACK_BUF_SIZE = 30; // Max buffer size of undo and redo
 
 vec3* undo_pos = nullptr;
@@ -732,13 +740,23 @@ vec3* redo_dir = nullptr;
 int redo_idx = -1;
 
 
-__device__ vec3 get_pos_from_volume(vec3 pos, vec3* d_vol)
+__device__ vec3 get_pos_from_texture(vec3 pos, cudaTextureObject_t tex)
+{
+	float x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
+	float y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
+	float z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
+
+	float4 tex_pos = tex3D<float4>(tex, x, y, z);
+	return vec3(tex_pos.x, tex_pos.y, tex_pos.z);
+}
+
+__device__ vec3 get_pos_from_volume(vec3 pos, vec3* vol)
 {
 	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
-	return d_vol[z * VOLX * VOLY + y * VOLX + x];
+	return vol[z * VOLX * VOLY + y * VOLX + x];
 }
 
 //----------------------------------------------------UPDATE----------------------------------------------------
@@ -754,6 +772,7 @@ __device__ float if_unoccupied_advance_to_next_occupied_voxel(
 	uint32_t max_mip,
 	BoundingBox aabb,
 	vec3* d_vol,
+	cudaTextureObject_t tex,
 	bool init_volume_data,
 	mat3 aabb_to_local = mat3(1.0f)
 ) {
@@ -767,7 +786,8 @@ __device__ float if_unoccupied_advance_to_next_occupied_voxel(
 
 		// After volume data has been initialized use it to get position data instead
 		if (init_volume_data) {
-			pos = get_pos_from_volume(pos, d_vol);
+			//pos = get_pos_from_volume(pos, d_vol);
+			pos = get_pos_from_texture(pos, tex);
 		}
 
 		// -----------UPDATE------------
@@ -916,6 +936,17 @@ __global__ void compute_nerf_rgba_kernel(const uint32_t n_elements, vec4* networ
 
 //------------------------------------------UPDATE------------------------------------------
 
+__global__ void vec3_to_float4(
+	const uint32_t vol_size,
+	vec3* vol,
+	float4* d_cuArr
+) {
+	const uint32_t i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= vol_size) return;
+
+	d_cuArr[i] = make_float4(vol[i].x, vol[i].y, vol[i].z, 1.0f);
+}
+
 __global__ void generate_deformed_volume(
 	const uint32_t vol_size,
 	vec3* vol,
@@ -927,6 +958,7 @@ __global__ void generate_deformed_volume(
 	if (i >= vol_size) return;
 
 	if (!vol_deform_area[i]) return;
+
 	// Convert index to position to apply deformation
 	vec3 pos = vec3(0.0f);
 	pos.x = vol[i].x;
@@ -956,6 +988,7 @@ __global__ void copy_deformed_volume(
 	bool* vol_deform_area
 ) {
 	const uint32_t i = threadIdx.x + blockIdx.x * blockDim.x;
+
 	if (i >= vol_size) return;
 
 	if (!vol_deform_area[i]) return;
@@ -995,6 +1028,7 @@ __global__ void generate_next_nerf_network_inputs(
 	uint32_t max_mip,
 	float cone_angle_constant,
 	vec3* d_vol,
+	cudaTextureObject_t tex,
 	bool init_volume_data,
 	const float* extra_dims
 ) {
@@ -1018,7 +1052,7 @@ __global__ void generate_next_nerf_network_inputs(
 		Ray ray = { origin, dir };
 
 		//t = if_unoccupied_advance_to_next_occupied_voxel(t, cone_angle, { origin, dir }, idir, density_grid, min_mip, max_mip, render_aabb, volume_data_device, init_volume_data, render_aabb_to_local);
-		t = if_unoccupied_advance_to_next_occupied_voxel(t, cone_angle, ray, idir, density_grid, min_mip, max_mip, render_aabb, d_vol, init_volume_data, render_aabb_to_local);
+		t = if_unoccupied_advance_to_next_occupied_voxel(t, cone_angle, ray, idir, density_grid, min_mip, max_mip, render_aabb, d_vol, tex, init_volume_data, render_aabb_to_local);
 		if (t >= MAX_DEPTH()) {
 			payload.n_steps = j;
 			return;
@@ -1028,7 +1062,8 @@ __global__ void generate_next_nerf_network_inputs(
 
 		vec3 pos = ray(t);
 		if (init_volume_data) {
-			pos = get_pos_from_volume(pos, d_vol);
+			//pos = get_pos_from_volume(pos, d_vol);
+			pos = get_pos_from_texture(pos, tex);
 		}
 
 		// -----------UPDATE------------ 
@@ -2405,6 +2440,7 @@ uint32_t Testbed::NerfTracer::trace(
 			max_mip,
 			cone_angle_constant,
 			d_vol,
+			tex,
 			init_volume_data,
 			extra_dims_gpu
 		);
@@ -2548,7 +2584,7 @@ const float* Testbed::get_inference_extra_dims(cudaStream_t stream) const {
 void generate_volume()
 {
 	vec3 pos = { -1.5, -1.5, -1.5 };
-	float step = 0.01;
+	float step = 1.0 / VOL_SIZE_DIGIT;
 
 	for (int z = 0; z < VOLZ; z++) {
 		for (int y = 0; y < VOLY; y++) {
@@ -2576,9 +2612,11 @@ void initialize_volume(cudaStream_t stream)
 	h_vol = (vec3*)malloc(VOL_SIZE * sizeof(vec3));
 	h_vol_buf = (vec3*)malloc(VOL_SIZE * sizeof(vec3));
 	h_vol_deform_area = (bool*)malloc(VOL_SIZE * sizeof(bool));
-	CUDA_CHECK_THROW(cudaMalloc((vec3**)&d_vol, VOL_SIZE * sizeof(vec3)));
-	CUDA_CHECK_THROW(cudaMalloc((vec3**)&d_vol_buf, VOL_SIZE * sizeof(vec3)));
-	CUDA_CHECK_THROW(cudaMalloc((bool**)&d_vol_deform_area, VOL_SIZE * sizeof(bool)));
+	CUDA_CHECK_THROW(cudaMalloc(&d_vol, VOL_SIZE * sizeof(vec3)));
+	CUDA_CHECK_THROW(cudaMalloc(&d_vol_buf, VOL_SIZE * sizeof(vec3)));
+	CUDA_CHECK_THROW(cudaMalloc(&d_vol_deform_area, VOL_SIZE * sizeof(bool)));
+
+	CUDA_CHECK_THROW(cudaMalloc(&d_tex_vol, VOL_SIZE * sizeof(float4)));
 
 	generate_volume();
 
@@ -2588,36 +2626,48 @@ void initialize_volume(cudaStream_t stream)
 	redo_dir = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
 }
 
-void deform_volume_origin(cudaStream_t stream, vec3 pos, vec3 dir)
+void update_texture(cudaStream_t stream)
 {
-	// Set area of deformation
-	int range = 5;
-	for (int z = pos.z - range; z < pos.z + range; z++) {
-		for (int y = pos.y - range; y < pos.y + range; y++) {
-			for (int x = pos.x - range; x < pos.x + range; x++) {
-				int idx = z * VOLX * VOLY + y * VOLX + x;
-				int idx2 = (z - (int)dir.z) * VOLX * VOLY + (y - (int)dir.y) * VOLX + (x - (int)dir.x);
-				// Check for out of bounds
-				if (idx >= 0 && idx < VOL_SIZE) {
-					h_vol[idx] = h_vol_buf[idx2];
-				}
-			}
-		}
-	}
+	linear_kernel(vec3_to_float4, 0, stream,
+		VOL_SIZE,
+		d_vol,
+		d_tex_vol
+	);
 
-	for (int z = pos.z - range; z < pos.z + range; z++) {
-		for (int y = pos.y - range; y < pos.y + range; y++) {
-			for (int x = pos.x - range; x < pos.x + range; x++) {
-				int idx = z * VOLX * VOLY + y * VOLX + x;
-				// Check for out of bounds
-				if (idx >= 0 && idx < VOL_SIZE) {
-					h_vol_buf[idx] = h_vol[idx];
-				}
-			}
-		}
-	}
-	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol, h_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
 	CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
+
+	cudaMemcpy3DParms param = { 0 };
+	param.srcPtr = make_cudaPitchedPtr(d_tex_vol, VOLX * sizeof(float4), VOLX, VOLY);
+	param.dstArray = d_cuArr;
+	param.extent = volExtent;
+	param.kind = cudaMemcpyDeviceToDevice;
+	CUDA_CHECK_THROW(cudaMemcpy3DAsync(&param), stream);
+}
+
+void initialize_texture(cudaStream_t stream)
+{
+	// Create cudaArray
+	CUDA_CHECK_THROW(cudaMalloc3DArray(&d_cuArr, &channelDesc, volExtent), stream);
+	update_texture(stream);
+
+	// Create texture
+	cudaResourceDesc texRes;
+	memset(&texRes, 0, sizeof(cudaResourceDesc));
+	texRes.resType = cudaResourceTypeArray;
+	texRes.res.array.array = d_cuArr;
+
+	cudaTextureDesc texDesc;
+	memset(&texDesc, 0, sizeof(cudaTextureDesc));
+	texDesc.normalizedCoords = false;
+	texDesc.filterMode = cudaFilterModeLinear;
+
+	texDesc.addressMode[0] = cudaAddressModeBorder;
+	texDesc.addressMode[1] = cudaAddressModeBorder;
+	texDesc.addressMode[2] = cudaAddressModeBorder;
+	texDesc.borderColor[0] = texDesc.borderColor[1] = texDesc.borderColor[2] = texDesc.borderColor[3] = 0;
+	texDesc.readMode = cudaReadModeElementType;
+
+	CUDA_CHECK_THROW(cudaCreateTextureObject(&tex, &texRes, &texDesc, NULL));
 }
 
 void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir)
@@ -2669,7 +2719,7 @@ void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir)
 	epicenter.z = input_pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
 	vec3 dir = vec3(0.0f);
-	float force = 1.5f;
+	float force = 1.5;
 	dir.x = input_dir.x * force;
 	dir.y = input_dir.y * force;
 	dir.z = input_dir.z * force;
@@ -2770,29 +2820,24 @@ void Testbed::render_nerf(
 	if (!m_train) {
 		if (!m_init_volume) {
 			initialize_volume(stream);
-			// Clear stack buffer
-			for (int i = 0; i < STACK_BUF_SIZE; i++) {
-				redo_dir[i] = vec3(0.0f);
-				redo_pos[i] = vec3(0.0f);
-				undo_dir[i] = vec3(0.0f);
-				undo_pos[i] = vec3(0.0f);
-			}
-			redo_idx = -1;
-			undo_idx = -1;
+			initialize_texture(stream);
 			m_init_volume = true;
 		}
 		else {
 			if (m_update_volume) {
 				update_volume(stream, m_input_pos, m_input_dir);
-
+				update_texture(stream);
+				
 				// Reset state for next deformation
 				m_input_pos = vec3(0.0f);
 				m_input_dir = vec3(0.0f);
 				m_update_volume = false;
 			}
-			if (m_reset_deform) {
+
+			if (m_reset_volume) {
 				generate_volume();
-				m_reset_deform = false;
+				update_texture(stream);
+				m_reset_volume = false;
 			}
 			if (m_undo_deform) {
 				if (undo_idx >= 0) {
