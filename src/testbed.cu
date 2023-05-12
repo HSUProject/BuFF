@@ -795,7 +795,7 @@ void Testbed::imgui() {
 
 	if (ImGui::CollapsingHeader("Edit Volume Data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
 		if (imgui_colored_button("Reset Volume Data", 0.f)) {
-			m_reset_deform = true;
+			m_reset_volume = true;
 		}
 
 		if (ImGui::Button("Undo Deform")) {
@@ -1686,7 +1686,7 @@ vec3 Testbed::convert_input_dir_to_world(ivec2 prev_mouse_pos, ivec2 curr_mouse_
 	vec4 world_dir = camera_dir * view2world;
 
 	// Scale vector to appropriate size in world space
-	float scale = 0.01f;
+	float scale = 0.001f;
 	world_dir.x = world_dir.x * scale;
 	world_dir.y = world_dir.y * scale;
 	world_dir.z = world_dir.z * scale;
@@ -1748,7 +1748,7 @@ void Testbed::mouse_drag() {
 			m_input_pos = get_3d_pos_from_pixel(*m_views.front().render_buffer, clicked_mouse_pos);
 			m_input_dir = convert_input_dir_to_world(clicked_mouse_pos, mouse, m_camera);
 
-			reset_accumulation(true);
+			reset_accumulation();
 		}
 	}
 
