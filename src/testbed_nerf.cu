@@ -971,7 +971,8 @@ __global__ void generate_deformed_volume(
 	int idx_z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
 	int distance = abs(epicenter.x - idx_x) + abs(epicenter.y - idx_y) + abs(epicenter.z - idx_z);
-	float weight = pow(0.8f, distance);
+	float force = 0.8f;
+	float weight = pow(force, distance);
 
 	// Copy deform data to buffer
 	vol_buf[i].x = pos.x - dir.x * weight;
