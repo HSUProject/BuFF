@@ -714,7 +714,6 @@ constexpr int VOL_SIZE_DIGIT = 50;
 constexpr int VOL_SIZE_OFFSET = 75;
 
 vec3* h_vol = nullptr; // CPU
-vec3* h_vol_buf = nullptr; // CPU Buffer
 bool* h_vol_deform_area = nullptr; // CPU
 
 vec3* d_vol = nullptr; // GPU
@@ -952,6 +951,7 @@ __global__ void generate_deformed_volume(
 	vec3* vol,
 	vec3* vol_buf,
 	bool* vol_deform_area,
+	vec3 epicenter,
 	vec3 dir
 ) {
 	const uint32_t i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -961,24 +961,23 @@ __global__ void generate_deformed_volume(
 
 	// Convert index to position to apply deformation
 	vec3 pos = vec3(0.0f);
-	pos.x = vol[i].x;
-	pos.y = vol[i].y;
-	pos.z = vol[i].z;
+	pos.x = vol[i].x + 0.001;
+	pos.y = vol[i].y + 0.001;
+	pos.z = vol[i].z + 0.001;
 
-	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
-	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
-	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
+	// Calculate the weight of deformation
+	int idx_x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
+	int idx_y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
+	int idx_z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
-	// Convert position back to index
-	int deformX = x - (int)dir.x;
-	int deformY = y - (int)dir.y;
-	int deformZ = z - (int)dir.z;
-
-	int idx = z * VOLX * VOLY + y * VOLX + x;
-	int deformed_idx = deformZ * VOLX * VOLY + deformY * VOLX + deformX;
+	int distance = abs(epicenter.x - idx_x) + abs(epicenter.y - idx_y) + abs(epicenter.z - idx_z);
+	float force = 0.8f;
+	float weight = pow(force, distance);
 
 	// Copy deform data to buffer
-	vol_buf[idx] = vol[deformed_idx];
+	vol_buf[i].x = pos.x - dir.x * weight;
+	vol_buf[i].y = pos.y - dir.y * weight;
+	vol_buf[i].z = pos.z - dir.z * weight;
 }
 
 __global__ void copy_deformed_volume(
@@ -993,19 +992,8 @@ __global__ void copy_deformed_volume(
 
 	if (!vol_deform_area[i]) return;
 
-	vec3 pos = vec3(0.0f);
-	pos.x = vol[i].x;
-	pos.y = vol[i].y;
-	pos.z = vol[i].z;
-
-	int x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
-	int y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
-	int z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET + 1;
-
-	int idx = z * VOLX * VOLY + y * VOLX + x;
-
 	// Copy buffer to origin
-	vol[idx] = vol_buf[idx];
+	vol[i] = vol_buf[i];
 
 	// Reset area of deformation
 	vol_deform_area[i] = false;
@@ -2583,40 +2571,36 @@ const float* Testbed::get_inference_extra_dims(cudaStream_t stream) const {
 
 void generate_volume()
 {
-	vec3 pos = { -1.5, -1.5, -1.5 };
-	float step = 1.0 / VOL_SIZE_DIGIT;
+	vec3 pos = { -1.5f, -1.5f, -1.5f };
+	float step = 1.0f / VOL_SIZE_DIGIT;
 
 	for (int z = 0; z < VOLZ; z++) {
 		for (int y = 0; y < VOLY; y++) {
 			for (int x = 0; x < VOLX; x++) {
 				int idx = z * VOLX * VOLY + y * VOLX + x;
 				h_vol[idx] = pos;
-				h_vol_buf[idx] = pos;
 				h_vol_deform_area[idx] = false;
 				pos.x += step;
 			}
-			pos.x = -1.5;
+			pos.x = -1.5f;
 			pos.y += step;
 		}
-		pos.y = -1.5;
+		pos.y = -1.5f;
 		pos.z += step;
 	}
 
 	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol, h_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
-	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_buf, h_vol_buf, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
+	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_buf, d_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyDeviceToDevice), stream);
 	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_deform_area, h_vol_deform_area, VOL_SIZE * sizeof(bool), cudaMemcpyHostToDevice), stream);
 }
 
 void initialize_volume(cudaStream_t stream)
 {
 	h_vol = (vec3*)malloc(VOL_SIZE * sizeof(vec3));
-	h_vol_buf = (vec3*)malloc(VOL_SIZE * sizeof(vec3));
 	h_vol_deform_area = (bool*)malloc(VOL_SIZE * sizeof(bool));
 	CUDA_CHECK_THROW(cudaMalloc(&d_vol, VOL_SIZE * sizeof(vec3)));
 	CUDA_CHECK_THROW(cudaMalloc(&d_vol_buf, VOL_SIZE * sizeof(vec3)));
 	CUDA_CHECK_THROW(cudaMalloc(&d_vol_deform_area, VOL_SIZE * sizeof(bool)));
-
-	CUDA_CHECK_THROW(cudaMalloc(&d_tex_vol, VOL_SIZE * sizeof(float4)));
 
 	generate_volume();
 
@@ -2647,7 +2631,9 @@ void update_texture(cudaStream_t stream)
 void initialize_texture(cudaStream_t stream)
 {
 	// Create cudaArray
+	CUDA_CHECK_THROW(cudaMalloc(&d_tex_vol, VOL_SIZE * sizeof(float4)));
 	CUDA_CHECK_THROW(cudaMalloc3DArray(&d_cuArr, &channelDesc, volExtent), stream);
+
 	update_texture(stream);
 
 	// Create texture
@@ -2673,7 +2659,7 @@ void initialize_texture(cudaStream_t stream)
 void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir)
 {
 	// Set area of deformation
-	int range = 5;
+	int range = 3;
 	for (int z = pos.z - range; z < pos.z + range; z++) {
 		for (int y = pos.y - range; y < pos.y + range; y++) {
 			for (int x = pos.x - range; x < pos.x + range; x++) {
@@ -2694,6 +2680,7 @@ void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir)
 		d_vol,
 		d_vol_buf,
 		d_vol_deform_area,
+		pos,
 		dir
 	);
 
@@ -2718,18 +2705,12 @@ void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir)
 	epicenter.y = input_pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 	epicenter.z = input_pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
-	vec3 dir = vec3(0.0f);
-	float force = 1.5;
-	dir.x = input_dir.x * force;
-	dir.y = input_dir.y * force;
-	dir.z = input_dir.z * force;
-
-	deform_volume(stream, epicenter, dir);
+	deform_volume(stream, epicenter, input_dir);
 
 	// Add deformation info to undo stack buffer
 	undo_idx++;
 	undo_pos[undo_idx % STACK_BUF_SIZE] = epicenter;
-	undo_dir[undo_idx % STACK_BUF_SIZE] = dir;
+	undo_dir[undo_idx % STACK_BUF_SIZE] = input_dir;
 
 	// Clear redo stack buffer
 	for (int i = 0; i < STACK_BUF_SIZE; i++) {
@@ -2741,7 +2722,7 @@ void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir)
 
 void undo_deformation(cudaStream_t stream) {
 	// Ignore action when buffer is empty
-	if (undo_idx == -1) return;
+	if (undo_idx < 0) return;
 
 	vec3 epicenter = vec3(0.0f);
 	epicenter.x = undo_pos[undo_idx % STACK_BUF_SIZE].x;
@@ -2750,9 +2731,9 @@ void undo_deformation(cudaStream_t stream) {
 
 	// Apply direction in opposite way to revert
 	vec3 dir = vec3(0.0f);
-	dir.x = undo_dir[undo_idx % STACK_BUF_SIZE].x * -1.0;
-	dir.y = undo_dir[undo_idx % STACK_BUF_SIZE].y * -1.0;
-	dir.z = undo_dir[undo_idx % STACK_BUF_SIZE].z * -1.0;
+	dir.x = undo_dir[undo_idx % STACK_BUF_SIZE].x * -1.0f;
+	dir.y = undo_dir[undo_idx % STACK_BUF_SIZE].y * -1.0f;
+	dir.z = undo_dir[undo_idx % STACK_BUF_SIZE].z * -1.0f;
 
 	deform_volume(stream, epicenter, dir);
 
@@ -2766,7 +2747,7 @@ void undo_deformation(cudaStream_t stream) {
 
 void redo_deformation(cudaStream_t stream) {
 	// Ignore action when buffer is empty
-	if (redo_idx == -1) return;
+	if (redo_idx < 0) return;
 
 	vec3 epicenter = vec3(0.0f);
 	epicenter.x = redo_pos[redo_idx % STACK_BUF_SIZE].x;
@@ -2840,15 +2821,13 @@ void Testbed::render_nerf(
 				m_reset_volume = false;
 			}
 			if (m_undo_deform) {
-				if (undo_idx >= 0) {
-					undo_deformation(stream);
-				}
+				undo_deformation(stream);
+				update_texture(stream);
 				m_undo_deform = false;
 			}
 			if (m_redo_deform) {
-				if (redo_idx >= 0) {
-					redo_deformation(stream);
-				}
+				redo_deformation(stream);
+				update_texture(stream);
 				m_redo_deform = false;
 			}
 		}
