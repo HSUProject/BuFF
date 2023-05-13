@@ -781,7 +781,8 @@ void Testbed::imgui() {
 		ImGui::End();
 	}
 
-	ImGui::Begin("BUFF v" NGP_VERSION);
+	ImGui::SetNextWindowSize(ImVec2(700, 400));
+	ImGui::Begin("VoxelFLEX v" NGP_VERSION);
 
 	size_t n_bytes = tcnn::total_n_bytes_allocated() + g_total_n_bytes_allocated;
 	if (m_dlss_provider) {
@@ -793,23 +794,27 @@ void Testbed::imgui() {
 
 	if (!m_training_data_available) { ImGui::BeginDisabled(); }
 
-	if (ImGui::CollapsingHeader("Edit Volume Data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
-		if (imgui_colored_button("Reset Volume Data", 0.f)) {
-			m_reset_volume = true;
+	if (ImGui::CollapsingHeader("Edit Volume data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
+		if (imgui_colored_button("Reset Volume_data", 0.f)) {
+			m_init_volume = false;
+			reset_accumulation();
 		}
 
 		if (ImGui::Button("Undo Deform")) {
-			m_undo_deform = true;
+			m_undo_deform= true;
+			reset_accumulation();
 		}
 		ImGui::SameLine();
 
 		if (ImGui::Button("Redo Deform")) {
 			m_redo_deform = true;
+			reset_accumulation();
 		}
 
-		ImGui::SameLine();
+		ImGui::SetNextItemWidth(120);
+		ImGui::SliderInt("deform range", &m_deform_range, 1, 5);
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
-		ImGui::SliderFloat("Target FPS", &m_dynamic_res_target_fps, 2.0f, 144.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("deform weight", &m_deform_force, 0.01f, 1.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::PopItemWidth();
 	}
 
@@ -874,7 +879,6 @@ void Testbed::imgui() {
 
 	if (!m_training_data_available) { ImGui::EndDisabled(); }
 
-	//if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) 창 열어두기
 	if (ImGui::CollapsingHeader("Rendering")) {
 		ImGui::Checkbox("Render", &m_render);
 		ImGui::SameLine();
@@ -887,7 +891,6 @@ void Testbed::imgui() {
 		if (ImGui::Checkbox("VSync", &m_vsync)) {
 			glfwSwapInterval(m_vsync ? 1 : 0);
 		}
-
 
 		if (!m_dlss_provider) { ImGui::BeginDisabled(); }
 		accum_reset |= ImGui::Checkbox("DLSS", &m_dlss);
@@ -911,431 +914,130 @@ void Testbed::imgui() {
 			ImGui::EndDisabled();
 		}
 
-		accum_reset |= ImGui::Combo("Render mode", (int*)&m_render_mode, RenderModeStr);
-		accum_reset |= ImGui::Combo("Tonemap curve", (int*)&m_tonemap_curve, TonemapCurveStr);
-		accum_reset |= ImGui::ColorEdit4("Background", &m_background_color[0]);
-
-		if (ImGui::SliderFloat("Exposure", &m_exposure, -5.f, 5.f)) {
-			set_exposure(m_exposure);
-		}
-
-		float max_diam = compMax(m_aabb.max - m_aabb.min);
-		float render_diam = compMax(m_render_aabb.max - m_render_aabb.min);
-		float old_render_diam = render_diam;
-
-		if (m_testbed_mode == ETestbedMode::Nerf || m_testbed_mode == ETestbedMode::Volume) {
-			if (ImGui::SliderFloat("Crop size", &render_diam, 0.1f, max_diam, "%.3f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat)) {
-				accum_reset = true;
-				if (old_render_diam > 0.f && render_diam > 0.f) {
-					const vec3 center = (m_render_aabb.max + m_render_aabb.min) * 0.5f;
-					float scale = render_diam / old_render_diam;
-					m_render_aabb.max = min((m_render_aabb.max - center) * scale + center, m_aabb.max);
-					m_render_aabb.min = max((m_render_aabb.min - center) * scale + center, m_aabb.min);
-				}
-			}
-		}
-
-		std::string transform_section_name = "World transform";
-		if (m_testbed_mode == ETestbedMode::Nerf) {
-			transform_section_name += " & Crop box";
-		}
-
-		if (ImGui::TreeNode(transform_section_name.c_str())) {
-			m_edit_render_aabb = true;
-
-			if (ImGui::RadioButton("Translate world", m_camera_path.m_gizmo_op == ImGuizmo::TRANSLATE && m_edit_world_transform)) {
-				m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
-				m_edit_world_transform = true;
-			}
-
-			ImGui::SameLine();
-			if (ImGui::RadioButton("Rotate world", m_camera_path.m_gizmo_op == ImGuizmo::ROTATE && m_edit_world_transform)) {
-				m_camera_path.m_gizmo_op = ImGuizmo::ROTATE;
-				m_edit_world_transform = true;
-			}
-
-			if (m_testbed_mode == ETestbedMode::Nerf) {
-				if (ImGui::RadioButton("Translate crop box", m_camera_path.m_gizmo_op == ImGuizmo::TRANSLATE && !m_edit_world_transform)) {
-					m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
-					m_edit_world_transform = false;
-				}
-
-				ImGui::SameLine();
-				if (ImGui::RadioButton("Rotate crop box", m_camera_path.m_gizmo_op == ImGuizmo::ROTATE && !m_edit_world_transform)) {
-					m_camera_path.m_gizmo_op = ImGuizmo::ROTATE;
-					m_edit_world_transform = false;
-				}
-
-				accum_reset |= ImGui::SliderFloat("Min x", ((float*)&m_render_aabb.min) + 0, m_aabb.min.x, m_render_aabb.max.x, "%.3f");
-				accum_reset |= ImGui::SliderFloat("Min y", ((float*)&m_render_aabb.min) + 1, m_aabb.min.y, m_render_aabb.max.y, "%.3f");
-				accum_reset |= ImGui::SliderFloat("Min z", ((float*)&m_render_aabb.min) + 2, m_aabb.min.z, m_render_aabb.max.z, "%.3f");
-				ImGui::Separator();
-				accum_reset |= ImGui::SliderFloat("Max x", ((float*)&m_render_aabb.max) + 0, m_render_aabb.min.x, m_aabb.max.x, "%.3f");
-				accum_reset |= ImGui::SliderFloat("Max y", ((float*)&m_render_aabb.max) + 1, m_render_aabb.min.y, m_aabb.max.y, "%.3f");
-				accum_reset |= ImGui::SliderFloat("Max z", ((float*)&m_render_aabb.max) + 2, m_render_aabb.min.z, m_aabb.max.z, "%.3f");
-				ImGui::Separator();
-				vec3 diag = m_render_aabb.diag();
-				bool edit_diag = false;
-				float max_diag = compMax(m_aabb.diag());
-				edit_diag |= ImGui::SliderFloat("Size x", ((float*)&diag) + 0, 0.001f, max_diag, "%.3f");
-				edit_diag |= ImGui::SliderFloat("Size y", ((float*)&diag) + 1, 0.001f, max_diag, "%.3f");
-				edit_diag |= ImGui::SliderFloat("Size z", ((float*)&diag) + 2, 0.001f, max_diag, "%.3f");
-				if (edit_diag) {
-					accum_reset = true;
-					vec3 cen = m_render_aabb.center();
-					m_render_aabb = BoundingBox(cen - diag * 0.5f, cen + diag * 0.5f);
-				}
-
-				if (ImGui::Button("Reset crop box")) {
-					accum_reset = true;
-					m_render_aabb = m_aabb;
-					m_render_aabb_to_local = mat3(1.0f);
-				}
-
-				ImGui::SameLine();
-				if (ImGui::Button("rotation only")) {
-					accum_reset = true;
-					vec3 world_cen = transpose(m_render_aabb_to_local) * m_render_aabb.center();
-					m_render_aabb_to_local = mat3(1.0f);
-					vec3 new_cen = m_render_aabb_to_local * world_cen;
-					vec3 old_cen = m_render_aabb.center();
-					m_render_aabb.min += new_cen - old_cen;
-					m_render_aabb.max += new_cen - old_cen;
-				}
-			}
-
-			ImGui::TreePop();
-		}
-		else {
-			m_edit_render_aabb = false;
-		}
-
-		if (ImGui::TreeNode("Debug visualization")) {
-			ImGui::Checkbox("Visualize unit cube", &m_visualize_unit_cube);
-			if (m_testbed_mode == ETestbedMode::Nerf) {
-				ImGui::SameLine();
-				ImGui::Checkbox("Visualize cameras", &m_nerf.visualize_cameras);
-				accum_reset |= ImGui::SliderInt("Show acceleration", &m_nerf.show_accel, -1, 7);
-			}
-
-			if (!m_single_view) { ImGui::BeginDisabled(); }
-			if (ImGui::SliderInt("Visualized dimension", &m_visualized_dimension, -1, (int)network_width(m_visualized_layer) - 1)) {
-				set_visualized_dim(m_visualized_dimension);
-			}
-
-			if (!m_single_view) { ImGui::EndDisabled(); }
-
-			if (ImGui::SliderInt("Visualized layer", &m_visualized_layer, 0, std::max(0, (int)network_num_forward_activations() - 1))) {
-				set_visualized_layer(m_visualized_layer);
-			}
-
-			if (ImGui::Checkbox("Single view", &m_single_view)) {
-				set_visualized_dim(-1);
-				accum_reset = true;
-			}
-
-			if (m_testbed_mode == ETestbedMode::Nerf) {
-				if (ImGui::Button("First")) {
-					first_training_view();
-				}
-				ImGui::SameLine();
-				if (ImGui::Button("Previous")) {
-					previous_training_view();
-				}
-				ImGui::SameLine();
-				if (ImGui::Button("Next")) {
-					next_training_view();
-				}
-				ImGui::SameLine();
-				if (ImGui::Button("Last")) {
-					last_training_view();
-				}
-				ImGui::SameLine();
-				ImGui::Text("%s", m_nerf.training.dataset.paths.at(m_nerf.training.view).c_str());
-
-				if (ImGui::SliderInt("Training view", &m_nerf.training.view, 0, (int)m_nerf.training.dataset.n_images - 1)) {
-					set_camera_to_training_view(m_nerf.training.view);
-					accum_reset = true;
-				}
-				ImGui::PlotLines("Training view error", m_nerf.training.error_map.pmf_img_cpu.data(), m_nerf.training.error_map.pmf_img_cpu.size(), 0, nullptr, 0.0f, FLT_MAX, ImVec2(0, 60.f));
-
-				if (m_nerf.training.optimize_exposure) {
-					std::vector<float> exposures(m_nerf.training.dataset.n_images);
-					for (uint32_t i = 0; i < m_nerf.training.dataset.n_images; ++i) {
-						exposures[i] = m_nerf.training.cam_exposure[i].variable().x;
-					}
-
-					ImGui::PlotLines("Training view exposures", exposures.data(), exposures.size(), 0, nullptr, FLT_MAX, FLT_MAX, ImVec2(0, 60.f));
-				}
-
-				if (ImGui::SliderInt("Glow mode", &m_nerf.glow_mode, 0, 16)) {
-					accum_reset = true;
-				}
-
-				if (m_nerf.glow_mode && ImGui::SliderFloat("Glow height", &m_nerf.glow_y_cutoff, -2.f, 3.f)) {
-					accum_reset = true;
-				}
-			}
-
-			ImGui::TreePop();
-		}
-	}
-
-	if (ImGui::CollapsingHeader("Camera")) {
-		ImGui::Checkbox("First person controls", &m_fps_camera);
-		ImGui::SameLine();
-		ImGui::Checkbox("Smooth motion", &m_camera_smoothing);
-		ImGui::SameLine();
-		ImGui::Checkbox("Autofocus", &m_autofocus);
-		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
-		if (ImGui::SliderFloat("Aperture size", &m_aperture_size, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat)) {
-			m_dlss = false;
-			accum_reset = true;
-		}
-		ImGui::SameLine();
-		accum_reset |= ImGui::SliderFloat("Focus depth", &m_slice_plane_z, -m_bounding_radius, m_bounding_radius);
-
-		float local_fov = fov();
-		if (ImGui::SliderFloat("Field of view", &local_fov, 0.0f, 120.0f)) {
-			set_fov(local_fov);
-			accum_reset = true;
-		}
-		ImGui::SameLine();
-		accum_reset |= ImGui::SliderFloat("Zoom", &m_zoom, 1.f, 10.f);
-		ImGui::PopItemWidth();
-
-
-
-		if (ImGui::TreeNode("Advanced camera settings")) {
-			accum_reset |= ImGui::SliderFloat2("Screen center", &m_screen_center.x, 0.f, 1.f);
-			accum_reset |= ImGui::SliderFloat2("Parallax shift", &m_parallax_shift.x, -1.f, 1.f);
-			ImGui::TreePop();
-		}
 	}
 
 	m_picture_in_picture_res = 0;
-
-	if (ImGui::CollapsingHeader("Camera Path manipulation")) {
-		if (int read = m_camera_path.imgui(
-			m_imgui.cam_path_path,
-			m_render_ms.val(),
-			m_camera,
-			m_slice_plane_z,
-			m_scale,
-			fov(),
-			m_aperture_size,
-			m_bounding_radius,
-			!m_nerf.training.dataset.xforms.empty() ? m_nerf.training.dataset.xforms[0].start : mat4x3(1.0f),
-			m_nerf.glow_mode,
-			m_nerf.glow_y_cutoff
-		)) {
-			if (!m_camera_path.rendering) {
-				reset_accumulation(true);
-
-				if (m_camera_path.update_cam_from_path) {
-					set_camera_from_time(m_camera_path.play_time);
-
-					// A value of larger than 1 indicates that the camera path wants
-					// to override camera smoothing.
-					if (read > 1) {
-						m_smoothed_camera = m_camera;
-					}
-				}
-				else {
-					m_pip_render_buffer->reset_accumulation();
-				}
-			}
-		}
-
-		if (!m_camera_path.keyframes.empty()) {
-			float w = ImGui::GetContentRegionAvail().x;
-			if (m_camera_path.update_cam_from_path) {
-				m_picture_in_picture_res = 0;
-				ImGui::Image((ImTextureID)(size_t)m_rgba_render_textures.front()->texture(), ImVec2(w, w * 9.0f / 16.0f));
-			}
-			else {
-				m_picture_in_picture_res = (float)std::min((int(w) + 31) & (~31), 1920 / 4);
-				ImGui::Image((ImTextureID)(size_t)m_pip_render_texture->texture(), ImVec2(w, w * 9.0f / 16.0f));
-			}
-		}
-	}
-
-	if (!m_camera_path.keyframes.empty() && ImGui::CollapsingHeader("Export video", ImGuiTreeNodeFlags_DefaultOpen)) {
-		// Render a video
-		if (imgui_colored_button(m_camera_path.rendering ? "Abort rendering" : "Render video", 0.4)) {
-			m_camera_path.rendering = !m_camera_path.rendering;
-
-			if (!clear_tmp_dir()) {
-				imgui_error_string = "Failed to clear temporary directory 'tmp' to hold rendered images.";
-				ImGui::OpenPopup("Error");
-
-				m_camera_path.rendering = false;
-			}
-
-			if (m_camera_path.rendering) {
-				m_camera_path.render_start_time = std::chrono::steady_clock::now();
-				m_camera_path.update_cam_from_path = true;
-				m_camera_path.play_time = 0.0f;
-				m_camera_path.auto_play_speed = 1.0f;
-				m_camera_path.render_frame_idx = 0;
-
-				m_dlss = false;
-				m_train = false;
-
-				reset_accumulation(true);
-				set_camera_from_time(m_camera_path.play_time);
-				m_smoothed_camera = m_camera;
-			}
-			else {
-				m_camera_path.update_cam_from_path = false;
-				m_camera_path.play_time = 0.0f;
-				m_camera_path.auto_play_speed = 0.0f;
-			}
-		}
-
-		if (m_camera_path.rendering) {
-			ImGui::SameLine();
-
-			auto elapsed = std::chrono::steady_clock::now() - m_camera_path.render_start_time;
-
-			uint32_t progress = m_camera_path.render_frame_idx * m_camera_path.render_settings.spp + m_views.front().render_buffer->spp();
-			uint32_t goal = m_camera_path.render_settings.n_frames() * m_camera_path.render_settings.spp;
-			auto est_remaining = elapsed * (float)(goal - progress) / std::max(progress, 1u);
-
-			ImGui::Text("%s", fmt::format(
-				"Frame {}/{}, Elapsed: {}, Remaining: {}",
-				m_camera_path.render_frame_idx + 1,
-				m_camera_path.render_settings.n_frames(),
-				tlog::durationToString(std::chrono::steady_clock::now() - m_camera_path.render_start_time),
-				tlog::durationToString(est_remaining)
-			).c_str());
-		}
-
-		if (m_camera_path.rendering) { ImGui::BeginDisabled(); }
-
-		ImGui::InputText("File##Video file path", m_imgui.video_path, sizeof(m_imgui.video_path));
-		m_camera_path.render_settings.filename = m_imgui.video_path;
-
-		ImGui::InputInt2("Resolution", &m_camera_path.render_settings.resolution.x);
-		ImGui::InputFloat("Duration (seconds)", &m_camera_path.render_settings.duration_seconds);
-		ImGui::InputFloat("FPS (frames/second)", &m_camera_path.render_settings.fps);
-		ImGui::InputInt("SPP (samples/pixel)", &m_camera_path.render_settings.spp);
-		ImGui::SliderInt("Quality", &m_camera_path.render_settings.quality, 0, 10);
-
-		ImGui::SliderFloat("Shutter fraction", &m_camera_path.render_settings.shutter_fraction, 0.0f, 1.0f);
-
-		if (m_camera_path.rendering) { ImGui::EndDisabled(); }
-	}
-
-
-	if (m_testbed_mode == ETestbedMode::Nerf || m_testbed_mode == ETestbedMode::Sdf) {
-		if (ImGui::CollapsingHeader("Export mesh / volume / slices")) {
-			static bool flip_y_and_z_axes = false;
-			static float density_range = 4.f;
-			BoundingBox aabb = (m_testbed_mode == ETestbedMode::Nerf) ? m_render_aabb : m_aabb;
-
-			auto res3d = get_marching_cubes_res(m_mesh.res, aabb);
-
-			// If we use an octree to fit the SDF only close to the surface, then marching cubes will not work (SDF not defined everywhere)
-			bool disable_marching_cubes = m_testbed_mode == ETestbedMode::Sdf && (m_sdf.uses_takikawa_encoding || m_sdf.use_triangle_octree);
-			if (disable_marching_cubes) { ImGui::BeginDisabled(); }
-
-			if (imgui_colored_button("Mesh it!", 0.4f)) {
-				marching_cubes(res3d, aabb, m_render_aabb_to_local, m_mesh.thresh);
-				m_nerf.render_with_lens_distortion = false;
-			}
-			if (m_mesh.indices.size() > 0) {
-				ImGui::SameLine();
-				if (imgui_colored_button("Clear Mesh", 0.f)) {
-					m_mesh.clear();
-				}
-			}
-
-			if (disable_marching_cubes) { ImGui::EndDisabled(); }
-
-			ImGui::SameLine();
-
-			if (imgui_colored_button("Save density PNG", -0.7f)) {
-				compute_and_save_png_slices(m_data_path, m_mesh.res, {}, m_mesh.thresh, density_range, flip_y_and_z_axes);
-			}
-
-			if (m_testbed_mode == ETestbedMode::Nerf) {
-				ImGui::SameLine();
-				if (imgui_colored_button("Save RGBA PNG sequence", 0.2f)) {
-					auto effective_view_dir = flip_y_and_z_axes ? vec3{ 0.0f, 1.0f, 0.0f } : vec3{ 0.0f, 0.0f, 1.0f };
-					// Depth of 0.01f is arbitrarily chosen to produce a visually interpretable range of alpha values.
-					// Alternatively, if the true transparency of a given voxel is desired, one could use the voxel size,
-					// the voxel diagonal, or some form of expected ray length through the voxel, given random directions.
-					GPUMemory<vec4> rgba = get_rgba_on_grid(res3d, effective_view_dir, true, 0.01f);
-					auto dir = m_data_path.is_directory() || m_data_path.empty() ? (m_data_path / "rgba_slices") : (m_data_path.parent_path() / fmt::format("{}_rgba_slices", m_data_path.filename()));
-					if (!dir.exists()) {
-						fs::create_directory(dir);
-					}
-
-					save_rgba_grid_to_png_sequence(rgba, dir, res3d, flip_y_and_z_axes);
-				}
-				if (imgui_colored_button("Save raw volumes", 0.4f)) {
-					auto effective_view_dir = flip_y_and_z_axes ? vec3{ 0.0f, 1.0f, 0.0f } : vec3{ 0.0f, 0.0f, 1.0f };
-					auto old_local = m_render_aabb_to_local;
-					auto old_aabb = m_render_aabb;
-					m_render_aabb_to_local = mat3(1.0f);
-					auto dir = m_data_path.is_directory() || m_data_path.empty() ? (m_data_path / "volume_raw") : (m_data_path.parent_path() / fmt::format("{}_volume_raw", m_data_path.filename()));
-					if (!dir.exists()) {
-						fs::create_directory(dir);
-					}
-
-					for (int cascade = 0; (1 << cascade) <= m_aabb.diag().x + 0.5f; ++cascade) {
-						float radius = (1 << cascade) * 0.5f;
-						m_render_aabb = BoundingBox(vec3(0.5f - radius), vec3(0.5f + radius));
-						// Dump raw density values that the user can then convert to alpha as they please.
-						GPUMemory<vec4> rgba = get_rgba_on_grid(res3d, effective_view_dir, true, 0.0f, true);
-						save_rgba_grid_to_raw_file(rgba, dir, res3d, flip_y_and_z_axes, cascade);
-					}
-					m_render_aabb_to_local = old_local;
-					m_render_aabb = old_aabb;
-				}
-			}
-
-			ImGui::SameLine();
-			ImGui::Checkbox("Swap Y&Z", &flip_y_and_z_axes);
-			ImGui::SliderFloat("PNG Density Range", &density_range, 0.001f, 8.f);
-
-			ImGui::SliderInt("Res:", &m_mesh.res, 16, 2048, "%d", ImGuiSliderFlags_Logarithmic);
-			ImGui::SameLine();
-
-			ImGui::Text("%dx%dx%d", res3d.x, res3d.y, res3d.z);
-			float thresh_range = (m_testbed_mode == ETestbedMode::Sdf) ? 0.5f : 10.f;
-			ImGui::SliderFloat("MC density threshold", &m_mesh.thresh, -thresh_range, thresh_range);
-			ImGui::Combo("Mesh render mode", (int*)&m_mesh_render_mode, "Off\0Vertex Colors\0Vertex Normals\0\0");
-			ImGui::Checkbox("Unwrap mesh", &m_mesh.unwrap);
-			if (uint32_t tricount = m_mesh.indices.size() / 3) {
-				ImGui::InputText("##OBJFile", m_imgui.mesh_path, sizeof(m_imgui.mesh_path));
-				if (ImGui::Button("Save it!")) {
-					save_mesh(m_mesh.verts, m_mesh.vert_normals, m_mesh.vert_colors, m_mesh.indices, m_imgui.mesh_path, m_mesh.unwrap, m_nerf.training.dataset.scale, m_nerf.training.dataset.offset);
-				}
-				ImGui::SameLine();
-				ImGui::Text("Mesh has %d triangles\n", tricount);
-				ImGui::Checkbox("Optimize mesh", &m_mesh.optimize_mesh);
-				ImGui::SliderFloat("Laplacian smoothing", &m_mesh.smooth_amount, 0.f, 2048.f);
-				ImGui::SliderFloat("Density push", &m_mesh.density_amount, 0.f, 128.f);
-				ImGui::SliderFloat("Inflate", &m_mesh.inflate_amount, 0.f, 128.f);
-			}
-		}
-	}
-
-	if (ImGui::BeginPopupModal("Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-		ImGui::Text("%s", imgui_error_string.c_str());
-		if (ImGui::Button("OK", ImVec2(120, 0))) {
-			ImGui::CloseCurrentPopup();
-		}
-		ImGui::EndPopup();
-	}
 
 	if (accum_reset) {
 		reset_accumulation();
 	}
 
 	ImGui::End();
+	//---------------------------------------------Update---------------------------------------------------------------------
+	ImGui::SetNextWindowPos(ImVec2(60, 500));
+	ImGui::SetNextWindowSize(ImVec2(700, 400));
+	ImGui::Begin("Visual Function");
+	ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
+	ImGui::SliderFloat("Target FPS", &m_dynamic_res_target_fps, 2.0f, 144.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
+	ImGui::PopItemWidth();
+	accum_reset |= ImGui::SliderFloat2("Screen center", &m_screen_center.x, 0.f, 1.f);
+	if (ImGui::SliderFloat("Exposure", &m_exposure, -5.f, 5.f)) {
+		set_exposure(m_exposure);
+	}
+	accum_reset |= ImGui::ColorEdit4("Background", &m_background_color[0]);
+	if (ImGui::TreeNode("Debug visualization")) {
+		ImGui::Checkbox("Visualize unit cube", &m_visualize_unit_cube);
+
+		if (m_testbed_mode == ETestbedMode::Nerf) {
+			if (ImGui::Button("First")) {
+				first_training_view();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Previous")) {
+				previous_training_view();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Next")) {
+				next_training_view();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Last")) {
+				last_training_view();
+			}
+			ImGui::SameLine();
+			ImGui::Text("%s", m_nerf.training.dataset.paths.at(m_nerf.training.view).c_str());
+
+			if (ImGui::SliderInt("Training view", &m_nerf.training.view, 0, (int)m_nerf.training.dataset.n_images - 1)) {
+				set_camera_to_training_view(m_nerf.training.view);
+				accum_reset = true;
+			}
+		}
+
+		ImGui::TreePop();
+	}
+
+	std::string transform_section_name = "World transform";
+	if (m_testbed_mode == ETestbedMode::Nerf) {
+		transform_section_name += " & Crop box";
+	}
+
+	if (ImGui::TreeNode(transform_section_name.c_str())) {
+		m_edit_render_aabb = true;
+
+		if (ImGui::RadioButton("Translate world", m_camera_path.m_gizmo_op == ImGuizmo::TRANSLATE && m_edit_world_transform)) {
+			m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
+			m_edit_world_transform = true;
+		}
+
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Rotate world", m_camera_path.m_gizmo_op == ImGuizmo::ROTATE && m_edit_world_transform)) {
+			m_camera_path.m_gizmo_op = ImGuizmo::ROTATE;
+			m_edit_world_transform = true;
+		}
+
+		if (m_testbed_mode == ETestbedMode::Nerf) {
+			if (ImGui::RadioButton("Translate crop box", m_camera_path.m_gizmo_op == ImGuizmo::TRANSLATE && !m_edit_world_transform)) {
+				m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
+				m_edit_world_transform = false;
+			}
+
+			ImGui::SameLine();
+			if (ImGui::RadioButton("Rotate crop box", m_camera_path.m_gizmo_op == ImGuizmo::ROTATE && !m_edit_world_transform)) {
+				m_camera_path.m_gizmo_op = ImGuizmo::ROTATE;
+				m_edit_world_transform = false;
+			}
+
+			accum_reset |= ImGui::SliderFloat("Min x", ((float*)&m_render_aabb.min) + 0, m_aabb.min.x, m_render_aabb.max.x, "%.3f");
+			accum_reset |= ImGui::SliderFloat("Min y", ((float*)&m_render_aabb.min) + 1, m_aabb.min.y, m_render_aabb.max.y, "%.3f");
+			accum_reset |= ImGui::SliderFloat("Min z", ((float*)&m_render_aabb.min) + 2, m_aabb.min.z, m_render_aabb.max.z, "%.3f");
+			ImGui::Separator();
+			accum_reset |= ImGui::SliderFloat("Max x", ((float*)&m_render_aabb.max) + 0, m_render_aabb.min.x, m_aabb.max.x, "%.3f");
+			accum_reset |= ImGui::SliderFloat("Max y", ((float*)&m_render_aabb.max) + 1, m_render_aabb.min.y, m_aabb.max.y, "%.3f");
+			accum_reset |= ImGui::SliderFloat("Max z", ((float*)&m_render_aabb.max) + 2, m_render_aabb.min.z, m_aabb.max.z, "%.3f");
+
+			if (ImGui::Button("Reset crop box")) {
+				accum_reset = true;
+				m_render_aabb = m_aabb;
+				m_render_aabb_to_local = mat3(1.0f);
+			}
+
+			ImGui::SameLine();
+			if (ImGui::Button("rotation only")) {
+				accum_reset = true;
+				vec3 world_cen = transpose(m_render_aabb_to_local) * m_render_aabb.center();
+				m_render_aabb_to_local = mat3(1.0f);
+				vec3 new_cen = m_render_aabb_to_local * world_cen;
+				vec3 old_cen = m_render_aabb.center();
+				m_render_aabb.min += new_cen - old_cen;
+				m_render_aabb.max += new_cen - old_cen;
+			}
+		}
+
+		ImGui::TreePop();
+	}
+	else {
+		m_edit_render_aabb = false;
+	}
+
+
+
+	if (accum_reset) {
+		reset_accumulation();
+	}
+
+	ImGui::End();
+	//---------------------------------------------Update---------------------------------------------------------------------
+
 }
 
 void Testbed::visualize_nerf_cameras(ImDrawList* list, const mat4& world2proj) {
@@ -1711,6 +1413,7 @@ void Testbed::mouse_drag() {
 	// Left Released
 	if (ImGui::GetIO().MouseReleased[0]) {
 		m_update_volume = true;
+		reset_accumulation();
 	}
 
 	// ------------------------------------------ UPDATE ------------------------------------------
