@@ -36,6 +36,8 @@
 #include <filesystem/directory.h>
 #include <filesystem/path.h>
 
+#include <stack>
+
 #ifdef copysign
 #undef copysign
 #endif
@@ -728,15 +730,16 @@ cudaArray* d_cuArr = nullptr;
 cudaTextureObject_t tex;
 
 // Stack Buffer
-constexpr int STACK_BUF_SIZE = 30; // Max buffer size of undo and redo
+typedef struct DeformInfo {
+	vec3 pos;
+	vec3 dir;
+	int range;
+	float force;
+	// bool shape;
+}DeformInfo;
 
-vec3* undo_pos = nullptr;
-vec3* undo_dir = nullptr;
-int undo_idx = -1;
-
-vec3* redo_pos = nullptr;
-vec3* redo_dir = nullptr;
-int redo_idx = -1;
+std::stack<DeformInfo> undo;
+std::stack<DeformInfo> redo;
 
 
 __device__ vec3 get_pos_from_texture(vec3 pos, cudaTextureObject_t tex)
@@ -953,7 +956,7 @@ __global__ void generate_deformed_volume(
 	bool* vol_deform_area,
 	vec3 epicenter,
 	vec3 dir,
-	float deform_weight
+	float force
 ) {
 	const uint32_t i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= vol_size) return;
@@ -962,9 +965,9 @@ __global__ void generate_deformed_volume(
 
 	// Convert index to position to apply deformation
 	vec3 pos = vec3(0.0f);
-	pos.x = vol[i].x + 0.001;
-	pos.y = vol[i].y + 0.001;
-	pos.z = vol[i].z + 0.001;
+	pos.x = vol[i].x + 0.0001;
+	pos.y = vol[i].y + 0.0001;
+	pos.z = vol[i].z + 0.0001;
 
 	// Calculate the weight of deformation
 	int idx_x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
@@ -972,7 +975,6 @@ __global__ void generate_deformed_volume(
 	int idx_z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
 	int distance = abs(epicenter.x - idx_x) + abs(epicenter.y - idx_y) + abs(epicenter.z - idx_z);
-	float force = deform_weight;
 	float weight = pow(force, distance);
 
 	// Copy deform data to buffer
@@ -2604,11 +2606,6 @@ void initialize_volume(cudaStream_t stream)
 	CUDA_CHECK_THROW(cudaMalloc(&d_vol_deform_area, VOL_SIZE * sizeof(bool)));
 
 	generate_volume();
-
-	undo_pos = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
-	undo_dir = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
-	redo_pos = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
-	redo_dir = (vec3*)malloc(STACK_BUF_SIZE * sizeof(vec3));
 }
 
 void update_texture(cudaStream_t stream)
@@ -2657,10 +2654,9 @@ void initialize_texture(cudaStream_t stream)
 	CUDA_CHECK_THROW(cudaCreateTextureObject(&tex, &texRes, &texDesc, NULL));
 }
 
-void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir, int deform_range, float deform_weight)
+void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir, int range, float force)
 {
 	// Set area of deformation
-	int range = deform_range;
 	for (int z = pos.z - range; z < pos.z + range; z++) {
 		for (int y = pos.y - range; y < pos.y + range; y++) {
 			for (int x = pos.x - range; x < pos.x + range; x++) {
@@ -2683,7 +2679,7 @@ void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir, int deform_range, fl
 		d_vol_deform_area,
 		pos,
 		dir,
-		deform_weight
+		force
 	);
 
 	//CUDA_CHECK_THROW(cudaMemcpyAsync(volume_data_device, volume_data_device_buf, VOL_SIZE * sizeof(vec3), cudaMemcpyDeviceToDevice), stream);
@@ -2700,75 +2696,58 @@ void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir, int deform_range, fl
 	CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
 }
 
-void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir, int deform_range, float deform_weight)
+void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir, int range, float force)
 {
 	vec3 epicenter = vec3(0.0f);
 	epicenter.x = input_pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 	epicenter.y = input_pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 	epicenter.z = input_pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
 
-	deform_volume(stream, epicenter, input_dir, deform_range, deform_weight);
+	deform_volume(stream, epicenter, input_dir, range, force);
 
 	// Add deformation info to undo stack buffer
-	undo_idx++;
-	undo_pos[undo_idx % STACK_BUF_SIZE] = epicenter;
-	undo_dir[undo_idx % STACK_BUF_SIZE] = input_dir;
+	undo.push({ epicenter, input_dir, range, force });
 
 	// Clear redo stack buffer
-	for (int i = 0; i < STACK_BUF_SIZE; i++) {
-		redo_dir[i] = vec3(0.0f);
-		redo_pos[i] = vec3(0.0f);
+	while (!redo.empty())
+	{
+		redo.pop();
 	}
-	redo_idx = -1;
 }
 
 void undo_deformation(cudaStream_t stream) {
 	// Ignore action when buffer is empty
-	if (undo_idx < 0) return;
+	if (undo.empty()) return;
 
-	vec3 epicenter = vec3(0.0f);
-	epicenter.x = undo_pos[undo_idx % STACK_BUF_SIZE].x;
-	epicenter.y = undo_pos[undo_idx % STACK_BUF_SIZE].y;
-	epicenter.z = undo_pos[undo_idx % STACK_BUF_SIZE].z;
+	DeformInfo info = undo.top();
+
+	vec3 epicenter = info.pos;
 
 	// Apply direction in opposite way to revert
-	vec3 dir = vec3(0.0f);
-	dir.x = undo_dir[undo_idx % STACK_BUF_SIZE].x * -1.0f;
-	dir.y = undo_dir[undo_idx % STACK_BUF_SIZE].y * -1.0f;
-	dir.z = undo_dir[undo_idx % STACK_BUF_SIZE].z * -1.0f;
+	vec3 dir = info.dir;
+	dir.x = dir.x * -1.0f;
+	dir.y = dir.y * -1.0f;
+	dir.z = dir.z * -1.0f;
 
-	deform_volume(stream, epicenter, dir,5,0.8f); // range, weight 매개변수 추가 필요 range -> 5, weight -> 0.8f
+	deform_volume(stream, epicenter, dir, info.range, info.force);
 
-	redo_idx++;
-	redo_pos[redo_idx % STACK_BUF_SIZE] = undo_pos[undo_idx % STACK_BUF_SIZE];
-	redo_dir[redo_idx % STACK_BUF_SIZE] = undo_dir[undo_idx % STACK_BUF_SIZE];
-	undo_pos[undo_idx % STACK_BUF_SIZE] = vec3(0.0f);
-	undo_dir[undo_idx % STACK_BUF_SIZE] = vec3(0.0f);
-	undo_idx--;
+	redo.push(info);
+	undo.pop();
 }
 
 void redo_deformation(cudaStream_t stream) {
 	// Ignore action when buffer is empty
-	if (redo_idx < 0) return;
+	if (redo.empty()) return;
 
-	vec3 epicenter = vec3(0.0f);
-	epicenter.x = redo_pos[redo_idx % STACK_BUF_SIZE].x;
-	epicenter.y = redo_pos[redo_idx % STACK_BUF_SIZE].y;
-	epicenter.z = redo_pos[redo_idx % STACK_BUF_SIZE].z;
+	DeformInfo info = redo.top();
 
-	vec3 dir = vec3(0.0f);
-	dir.x = redo_dir[redo_idx % STACK_BUF_SIZE].x;
-	dir.y = redo_dir[redo_idx % STACK_BUF_SIZE].y;
-	dir.z = redo_dir[redo_idx % STACK_BUF_SIZE].z;
+	vec3 epicenter = info.pos;
+	vec3 dir = info.dir;
 
-	deform_volume(stream, epicenter, dir, 5 , 0.8f); // range, weight 매개변수 추가 필요 range -> 5, weight -> 0.8f
+	deform_volume(stream, epicenter, dir, info.range, info.force);
 
-	undo_idx++;
-	undo_pos[undo_idx % STACK_BUF_SIZE] = redo_pos[redo_idx % STACK_BUF_SIZE];
-	undo_dir[undo_idx % STACK_BUF_SIZE] = redo_dir[redo_idx % STACK_BUF_SIZE];
-	redo_pos[redo_idx % STACK_BUF_SIZE] = vec3(0.0f);
-	redo_dir[redo_idx % STACK_BUF_SIZE] = vec3(0.0f);
-	redo_idx--;
+	undo.push(info);
+	redo.pop();
 }
 
 //------------------------------------------UPDATE------------------------------------------
