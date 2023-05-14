@@ -794,9 +794,9 @@ void Testbed::imgui() {
 
 	if (!m_training_data_available) { ImGui::BeginDisabled(); }
 
-	if (ImGui::CollapsingHeader("Edit Volume data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
-		if (imgui_colored_button("Reset Volume_data", 0.f)) {
-			m_init_volume = false;
+	if (ImGui::CollapsingHeader("Edit Volume Data", !m_train ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
+		if (imgui_colored_button("Reset Volume Data", 0.f)) {
+			m_reset_volume = true;
 			reset_accumulation();
 		}
 
@@ -812,9 +812,9 @@ void Testbed::imgui() {
 		}
 
 		ImGui::SetNextItemWidth(120);
-		ImGui::SliderInt("deform range", &m_deform_range, 1, 5);
+		ImGui::SliderInt("Deform range", &m_deform_range, 1, 5);
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
-		ImGui::SliderFloat("deform weight", &m_deform_force, 0.01f, 1.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
+		ImGui::SliderFloat("Deform force", &m_deform_force, 0.01f, 1.0f, "%.01f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::PopItemWidth();
 	}
 

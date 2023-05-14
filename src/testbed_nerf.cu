@@ -716,11 +716,16 @@ constexpr int VOL_SIZE_DIGIT = 50;
 constexpr int VOL_SIZE_OFFSET = 75;
 
 vec3* h_vol = nullptr; // CPU
-bool* h_vol_deform_area = nullptr; // CPU
-
 vec3* d_vol = nullptr; // GPU
 vec3* d_vol_buf = nullptr; // GPU Buffer
-bool* d_vol_deform_area = nullptr; // GPU
+
+typedef struct DeformArea {
+	bool active;
+	int x, y, z;
+}DeformArea;
+
+DeformArea* h_vol_deform_area = nullptr; // CPU
+DeformArea* d_vol_deform_area = nullptr; // GPU
 
 // Texture
 float4* d_tex_vol = nullptr;
@@ -733,7 +738,7 @@ cudaTextureObject_t tex;
 typedef struct DeformInfo {
 	vec3 pos;
 	vec3 dir;
-	int range;
+	short range;
 	float force;
 	// bool shape;
 }DeformInfo;
@@ -953,7 +958,7 @@ __global__ void generate_deformed_volume(
 	const uint32_t vol_size,
 	vec3* vol,
 	vec3* vol_buf,
-	bool* vol_deform_area,
+	DeformArea* vol_deform_area,
 	vec3 epicenter,
 	vec3 dir,
 	float force
@@ -961,7 +966,7 @@ __global__ void generate_deformed_volume(
 	const uint32_t i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= vol_size) return;
 
-	if (!vol_deform_area[i]) return;
+	if (!vol_deform_area[i].active) return;
 
 	// Convert index to position to apply deformation
 	vec3 pos = vec3(0.0f);
@@ -970,9 +975,9 @@ __global__ void generate_deformed_volume(
 	pos.z = vol[i].z + 0.0001;
 
 	// Calculate the weight of deformation
-	int idx_x = pos.x * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
-	int idx_y = pos.y * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
-	int idx_z = pos.z * VOL_SIZE_DIGIT + VOL_SIZE_OFFSET;
+	int idx_x = vol_deform_area[i].x;
+	int idx_y = vol_deform_area[i].y;
+	int idx_z = vol_deform_area[i].z;
 
 	int distance = abs(epicenter.x - idx_x) + abs(epicenter.y - idx_y) + abs(epicenter.z - idx_z);
 	float weight = pow(force, distance);
@@ -987,19 +992,19 @@ __global__ void copy_deformed_volume(
 	const uint32_t vol_size,
 	vec3* vol,
 	vec3* vol_buf,
-	bool* vol_deform_area
+	DeformArea* vol_deform_area
 ) {
 	const uint32_t i = threadIdx.x + blockIdx.x * blockDim.x;
 
 	if (i >= vol_size) return;
 
-	if (!vol_deform_area[i]) return;
+	if (!vol_deform_area[i].active) return;
 
 	// Copy buffer to origin
 	vol[i] = vol_buf[i];
 
 	// Reset area of deformation
-	vol_deform_area[i] = false;
+	vol_deform_area[i].active = false;
 }
 
 //------------------------------------------UPDATE------------------------------------------
@@ -2582,7 +2587,9 @@ void generate_volume()
 			for (int x = 0; x < VOLX; x++) {
 				int idx = z * VOLX * VOLY + y * VOLX + x;
 				h_vol[idx] = pos;
-				h_vol_deform_area[idx] = false;
+				h_vol_deform_area[idx].x = x;
+				h_vol_deform_area[idx].y = y;
+				h_vol_deform_area[idx].z = z;
 				pos.x += step;
 			}
 			pos.x = -1.5f;
@@ -2594,16 +2601,16 @@ void generate_volume()
 
 	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol, h_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyHostToDevice), stream);
 	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_buf, d_vol, VOL_SIZE * sizeof(vec3), cudaMemcpyDeviceToDevice), stream);
-	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_deform_area, h_vol_deform_area, VOL_SIZE * sizeof(bool), cudaMemcpyHostToDevice), stream);
+	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_deform_area, h_vol_deform_area, VOL_SIZE * sizeof(DeformArea), cudaMemcpyHostToDevice), stream);
 }
 
 void initialize_volume(cudaStream_t stream)
 {
 	h_vol = (vec3*)malloc(VOL_SIZE * sizeof(vec3));
-	h_vol_deform_area = (bool*)malloc(VOL_SIZE * sizeof(bool));
+	h_vol_deform_area = (DeformArea*)malloc(VOL_SIZE * sizeof(DeformArea));
 	CUDA_CHECK_THROW(cudaMalloc(&d_vol, VOL_SIZE * sizeof(vec3)));
 	CUDA_CHECK_THROW(cudaMalloc(&d_vol_buf, VOL_SIZE * sizeof(vec3)));
-	CUDA_CHECK_THROW(cudaMalloc(&d_vol_deform_area, VOL_SIZE * sizeof(bool)));
+	CUDA_CHECK_THROW(cudaMalloc(&d_vol_deform_area, VOL_SIZE * sizeof(DeformArea)));
 
 	generate_volume();
 }
@@ -2663,13 +2670,13 @@ void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir, int range, float for
 				int idx = z * VOLX * VOLY + y * VOLX + x;
 				// Check for out of bounds
 				if (idx >= 0 && idx < VOL_SIZE) {
-					h_vol_deform_area[idx] = true;
+					h_vol_deform_area[idx].active = true;
 				}
 			}
 		}
 	}
 
-	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_deform_area, h_vol_deform_area, VOL_SIZE * sizeof(bool), cudaMemcpyHostToDevice), stream);
+	CUDA_CHECK_THROW(cudaMemcpyAsync(d_vol_deform_area, h_vol_deform_area, VOL_SIZE * sizeof(DeformArea), cudaMemcpyHostToDevice), stream);
 
 	// Execute volume deformation before generating network inputs
 	linear_kernel(generate_deformed_volume, 0, stream,
@@ -2692,7 +2699,7 @@ void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir, int range, float for
 		d_vol_deform_area
 	);
 
-	CUDA_CHECK_THROW(cudaMemcpyAsync(h_vol_deform_area, d_vol_deform_area, VOL_SIZE * sizeof(bool), cudaMemcpyDeviceToHost), stream);
+	CUDA_CHECK_THROW(cudaMemcpyAsync(h_vol_deform_area, d_vol_deform_area, VOL_SIZE * sizeof(DeformArea), cudaMemcpyDeviceToHost), stream);
 	CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
 }
 
@@ -2706,7 +2713,8 @@ void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir, int rang
 	deform_volume(stream, epicenter, input_dir, range, force);
 
 	// Add deformation info to undo stack buffer
-	undo.push({ epicenter, input_dir, range, force });
+	DeformInfo info = { epicenter, input_dir, range, force };
+	undo.push(info);
 
 	// Clear redo stack buffer
 	while (!redo.empty())
@@ -2715,7 +2723,23 @@ void update_volume(cudaStream_t stream, vec3 input_pos, vec3 input_dir, int rang
 	}
 }
 
-void undo_deformation(cudaStream_t stream) {
+void reset_volume() {
+	// Regenerate all volume data
+	generate_volume();
+
+	// Empty all history of deformation
+	while (!undo.empty())
+	{
+		undo.pop();
+	}
+	while (!redo.empty())
+	{
+		redo.pop();
+	}
+}
+
+void undo_deformation(cudaStream_t stream)
+{
 	// Ignore action when buffer is empty
 	if (undo.empty()) return;
 
@@ -2735,7 +2759,8 @@ void undo_deformation(cudaStream_t stream) {
 	undo.pop();
 }
 
-void redo_deformation(cudaStream_t stream) {
+void redo_deformation(cudaStream_t stream)
+{
 	// Ignore action when buffer is empty
 	if (redo.empty()) return;
 
@@ -2797,7 +2822,7 @@ void Testbed::render_nerf(
 			}
 
 			if (m_reset_volume) {
-				generate_volume();
+				reset_volume();
 				update_texture(stream);
 				m_reset_volume = false;
 			}
