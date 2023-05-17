@@ -562,7 +562,7 @@ public:
 
 	vec3 m_input_pos = vec3(0.0f);
 	vec3 m_input_dir = vec3(0.0f);
-	int  m_deform_range = 5;
+	int  m_deform_range = 3;
 	float m_deform_force = 0.8f;
 
 	// ------------------------------------------------- UPDATE -------------------------------------------------
