@@ -1451,6 +1451,13 @@ void Testbed::mouse_drag() {
 			m_input_pos = get_3d_pos_from_pixel(*m_views.front().render_buffer, clicked_mouse_pos);
 			m_input_dir = convert_input_dir_to_world(clicked_mouse_pos, mouse, m_camera);
 
+			ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+			draw_list->_FringeScale = 5.0f;
+			ImVec2 p = { ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y };
+			draw_list->AddCircle(p, m_deform_range * 10.0f, IM_COL32(226, 221, 109, 180), 0, 10.0f);
+			draw_list->AddCircle(ImVec2(ImGui::GetIO().MouseClickedPos[0].x, ImGui::GetIO().MouseClickedPos[0].y), m_deform_range * 10.0f, IM_COL32(109, 189, 209, 180), 0, 10.0f);
+			draw_list->_FringeScale = 1.0f;
+
 			reset_accumulation();
 		}
 	}
