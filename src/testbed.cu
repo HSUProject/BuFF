@@ -1147,6 +1147,9 @@ void Testbed::draw_visualizations(ImDrawList* list, const mat4x3& camera_matrix)
 	if (m_camera_path.imgui_viz(list, view2proj, world2proj, world2view, focal, aspect, m_ndc_znear, m_ndc_zfar)) {
 		m_pip_render_buffer->reset_accumulation();
 	}
+
+	ImVec2 mouse_pos = { ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y };
+	list->AddCircle(mouse_pos, 10.0f, IM_COL32(226, 221, 109, 180), 0, 5.0f);
 }
 
 void glfw_error_callback(int error, const char* description) {
@@ -1177,6 +1180,7 @@ bool Testbed::keyboard_event() {
 		m_camera_path.m_gizmo_op = ImGuizmo::TRANSLATE;
 		if (ctrl) {
 			m_undo_deform = true;
+			reset_accumulation();
 		}
 	}
 
@@ -1388,7 +1392,7 @@ vec3 Testbed::convert_input_dir_to_world(ivec2 prev_mouse_pos, ivec2 curr_mouse_
 	vec4 world_dir = camera_dir * view2world;
 
 	// Scale vector to appropriate size in world space
-	float scale = 0.001f;
+	float scale = 0.0005f * m_scale;
 	world_dir.x = world_dir.x * scale;
 	world_dir.y = world_dir.y * scale;
 	world_dir.z = world_dir.z * scale;
@@ -1453,9 +1457,8 @@ void Testbed::mouse_drag() {
 
 			ImDrawList* draw_list = ImGui::GetForegroundDrawList();
 			draw_list->_FringeScale = 5.0f;
-			ImVec2 p = { ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y };
-			draw_list->AddCircle(p, m_deform_range * 10.0f, IM_COL32(226, 221, 109, 180), 0, 10.0f);
-			draw_list->AddCircle(ImVec2(ImGui::GetIO().MouseClickedPos[0].x, ImGui::GetIO().MouseClickedPos[0].y), m_deform_range * 10.0f, IM_COL32(109, 189, 209, 180), 0, 10.0f);
+			ImVec2 mouse_pos = { ImGui::GetIO().MouseClickedPos[0].x, ImGui::GetIO().MouseClickedPos[0].y };
+			draw_list->AddCircle(mouse_pos, m_deform_range * 10.0f, IM_COL32(109, 189, 209, 180), 0, 7.0f);
 			draw_list->_FringeScale = 1.0f;
 
 			reset_accumulation();

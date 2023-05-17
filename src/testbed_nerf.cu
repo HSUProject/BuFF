@@ -707,13 +707,13 @@ __global__ void bitfield_max_pool(const uint32_t n_elements,
 //----------------------------------------------------UPDATE----------------------------------------------------
 
 // Volume Data
-constexpr int VOLX = 201; // width
-constexpr int VOLY = 201; // height
-constexpr int VOLZ = 201; // depth
+constexpr int VOLX = 256; // width
+constexpr int VOLY = 256; // height
+constexpr int VOLZ = 256; // depth
 
 constexpr int VOL_SIZE = VOLX * VOLY * VOLZ;
-constexpr int VOL_SIZE_DIGIT = 50;
-constexpr int VOL_SIZE_OFFSET = 75;
+constexpr int VOL_SIZE_DIGIT = 64;
+constexpr int VOL_SIZE_OFFSET = 96;
 
 vec3* h_vol = nullptr; // CPU
 vec3* d_vol = nullptr; // GPU
@@ -2664,9 +2664,9 @@ void initialize_texture(cudaStream_t stream)
 void deform_volume(cudaStream_t stream, vec3 pos, vec3 dir, int range, float force)
 {
 	// Set area of deformation
-	for (int z = pos.z - range; z < pos.z + range; z++) {
-		for (int y = pos.y - range; y < pos.y + range; y++) {
-			for (int x = pos.x - range; x < pos.x + range; x++) {
+	for (int z = pos.z - range; z <= pos.z + range; z++) {
+		for (int y = pos.y - range; y <= pos.y + range; y++) {
+			for (int x = pos.x - range; x <= pos.x + range; x++) {
 				int idx = z * VOLX * VOLY + y * VOLX + x;
 				// Check for out of bounds
 				if (idx >= 0 && idx < VOL_SIZE) {
@@ -2812,7 +2812,7 @@ void Testbed::render_nerf(
 		}
 		else {
 			if (m_update_volume) {
-				update_volume(stream, m_input_pos, m_input_dir,m_deform_range,m_deform_force);
+				update_volume(stream, m_input_pos, m_input_dir, m_deform_range - 1, m_deform_force);
 				update_texture(stream);
 				
 				// Reset state for next deformation
