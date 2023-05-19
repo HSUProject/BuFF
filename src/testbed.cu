@@ -1392,7 +1392,7 @@ vec3 Testbed::convert_input_dir_to_world(ivec2 prev_mouse_pos, ivec2 curr_mouse_
 	vec4 world_dir = camera_dir * view2world;
 
 	// Scale vector to appropriate size in world space
-	float scale = 0.0005f * m_scale;
+	float scale = 0.00002f * m_scale;
 	world_dir.x = world_dir.x * scale;
 	world_dir.y = world_dir.y * scale;
 	world_dir.z = world_dir.z * scale;
