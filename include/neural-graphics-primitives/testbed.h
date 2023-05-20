@@ -554,6 +554,13 @@ public:
 
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 
+	bool m_edit_win = false;
+	bool m_training_win = true;
+	bool m_render_win = false;
+	bool m_camera_win = false;
+	bool m_debug_win = false;
+
+
 	bool m_init_volume = false;
 	bool m_update_volume = false;
 	bool m_reset_volume = false;
