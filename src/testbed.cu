@@ -783,22 +783,19 @@ void Testbed::imgui() {
 	}
 
 	if (ImGui::BeginMainMenuBar()) {
-		if (ImGui::MenuItem("undo")) {
-			m_undo_deform = true;
-			reset_accumulation();
+		if (ImGui::BeginMenu("File")) {
+			if (ImGui::MenuItem("Save")){
+
+			}
+			if (ImGui::MenuItem("Save as ..")) {
+
+			}
+
+
+
+			ImGui::EndMenu();
 		}
 
-		if (ImGui::MenuItem("redo")) {
-			m_redo_deform = true;
-			reset_accumulation();
-		}
-
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
-		if (ImGui::MenuItem("reset")) {
-			m_reset_volume = true;
-			reset_accumulation();
-		}
-		ImGui::PopStyleColor();
 
 		if (ImGui::MenuItem("Edit")) {
 			m_edit_win = !m_edit_win;
@@ -808,10 +805,11 @@ void Testbed::imgui() {
 			if (ImGui::MenuItem(m_train ? "stop training" : "start training")) {
 				m_train = !m_train;
 			}
+
 			if (ImGui::MenuItem("reset training")) {
 				reload_network_from_file();
 			}
-			if (ImGui::MenuItem(m_training_win ? "unshow window" : "show window")) {
+			if (ImGui::MenuItem(m_training_win ? "hide" : "details")) {
 				m_training_win = !m_training_win;
 			}
 			ImGui::EndMenu();
@@ -846,7 +844,7 @@ void Testbed::imgui() {
 			reset_accumulation();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("reset deform")) {
+		if (ImGui::Button("reset")) {
 			m_reset_volume = true;
 			reset_accumulation();
 		}
@@ -971,101 +969,9 @@ void Testbed::imgui() {
 		if (imgui_colored_button("Reset training", 0.f)) {
 			reload_network_from_file();
 		}
-		ImGui::SameLine();
-		ImGui::Checkbox("encoding", &m_train_encoding);
-		ImGui::SameLine();
-		ImGui::Checkbox("network", &m_train_network);
-		ImGui::SameLine();
-		ImGui::Checkbox("rand levels", &m_max_level_rand_training);
-		if (m_testbed_mode == ETestbedMode::Nerf) {
-			ImGui::Checkbox("envmap", &m_nerf.training.train_envmap);
-			ImGui::SameLine();
-			ImGui::Checkbox("extrinsics", &m_nerf.training.optimize_extrinsics);
-			ImGui::SameLine();
-			ImGui::Checkbox("distortion", &m_nerf.training.optimize_distortion);
-			ImGui::SameLine();
-			ImGui::Checkbox("per-image latents", &m_nerf.training.optimize_extra_dims);
+	
 
-
-			static bool export_extrinsics_in_quat_format = true;
-			static bool extrinsics_have_been_optimized = false;
-
-			if (m_nerf.training.optimize_extrinsics) {
-				extrinsics_have_been_optimized = true;
-			}
-
-			if (extrinsics_have_been_optimized) {
-				if (imgui_colored_button("Export extrinsics", 0.4f)) {
-					m_nerf.training.export_camera_extrinsics(m_imgui.extrinsics_path, export_extrinsics_in_quat_format);
-				}
-
-				ImGui::SameLine();
-				ImGui::Checkbox("as quaternions", &export_extrinsics_in_quat_format);
-				ImGui::InputText("File##Extrinsics file path", m_imgui.extrinsics_path, sizeof(m_imgui.extrinsics_path));
-			}
-		}
-
-		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
-		ImGui::SliderInt("Batch size", (int*)&m_training_batch_size, 1 << 12, 1 << 22, "%d", ImGuiSliderFlags_Logarithmic);
-		ImGui::SameLine();
-		ImGui::DragInt("Seed", (int*)&m_seed, 1.0f, 0, std::numeric_limits<int>::max());
-		ImGui::PopItemWidth();
-
-		m_training_batch_size = next_multiple(m_training_batch_size, batch_size_granularity);
-
-		if (m_train) {
-			std::vector<std::string> timings;
-			if (m_testbed_mode == ETestbedMode::Nerf) {
-				timings.emplace_back(fmt::format("Grid: {:.01f}ms", m_training_prep_ms.ema_val()));
-			}
-			else {
-				timings.emplace_back(fmt::format("Datagen: {:.01f}ms", m_training_prep_ms.ema_val()));
-			}
-
-			timings.emplace_back(fmt::format("Training: {:.01f}ms", m_training_ms.ema_val()));
-			ImGui::Text("%s", join(timings, ", ").c_str());
-		}
-		else {
-			ImGui::Text("Training paused");
-		}
-
-		if (m_testbed_mode == ETestbedMode::Nerf) {
-			ImGui::Text("Rays/batch: %d, Samples/ray: %.2f, Batch size: %d/%d", m_nerf.training.counters_rgb.rays_per_batch, (float)m_nerf.training.counters_rgb.measured_batch_size / (float)m_nerf.training.counters_rgb.rays_per_batch, m_nerf.training.counters_rgb.measured_batch_size, m_nerf.training.counters_rgb.measured_batch_size_before_compaction);
-		}
-
-		float elapsed_training = std::chrono::duration<float>(std::chrono::steady_clock::now() - m_training_start_time_point).count();
-		ImGui::Text("Steps: %d, Loss: %0.6f (%0.2f dB), Elapsed: %.1fs", m_training_step, m_loss_scalar.ema_val(), linear_to_db(m_loss_scalar.ema_val()), elapsed_training);
-		ImGui::PlotLines("loss graph", m_loss_graph.data(), std::min(m_loss_graph_samples, m_loss_graph.size()), (m_loss_graph_samples < m_loss_graph.size()) ? 0 : (m_loss_graph_samples % m_loss_graph.size()), 0, FLT_MAX, FLT_MAX, ImVec2(0, 50.f));
-
-		if (m_testbed_mode == ETestbedMode::Nerf && ImGui::TreeNode("NeRF training options")) {
-			ImGui::Checkbox("Random bg color", &m_nerf.training.random_bg_color);
-			ImGui::SameLine();
-			ImGui::Checkbox("Snap to pixel centers", &m_nerf.training.snap_to_pixel_centers);
-			ImGui::SliderFloat("Near distance", &m_nerf.training.near_distance, 0.0f, 1.0f);
-			accum_reset |= ImGui::Checkbox("Linear colors", &m_nerf.training.linear_colors);
-			ImGui::Combo("Loss", (int*)&m_nerf.training.loss_type, LossTypeStr);
-			ImGui::Combo("Depth Loss", (int*)&m_nerf.training.depth_loss_type, LossTypeStr);
-			ImGui::Combo("RGB activation", (int*)&m_nerf.rgb_activation, NerfActivationStr);
-			ImGui::Combo("Density activation", (int*)&m_nerf.density_activation, NerfActivationStr);
-			ImGui::SliderFloat("Cone angle", &m_nerf.cone_angle_constant, 0.0f, 1.0f / 128.0f);
-			ImGui::SliderFloat("Depth supervision strength", &m_nerf.training.depth_supervision_lambda, 0.f, 1.f);
-
-			// Importance sampling options, but still related to training
-			ImGui::Checkbox("Sample focal plane ~error", &m_nerf.training.sample_focal_plane_proportional_to_error);
-			ImGui::SameLine();
-			ImGui::Checkbox("Sample focal plane ~sharpness", &m_nerf.training.include_sharpness_in_error);
-			ImGui::Checkbox("Sample image ~error", &m_nerf.training.sample_image_proportional_to_error);
-			ImGui::Text("%dx%d error res w/ %d steps between updates", m_nerf.training.error_map.resolution.x, m_nerf.training.error_map.resolution.y, m_nerf.training.n_steps_between_error_map_updates);
-			ImGui::Checkbox("Display error overlay", &m_nerf.training.render_error_overlay);
-			if (m_nerf.training.render_error_overlay) {
-				ImGui::SliderFloat("Error overlay brightness", &m_nerf.training.error_overlay_brightness, 0.f, 1.f);
-			}
-			ImGui::SliderFloat("Density grid decay", &m_nerf.training.density_grid_decay, 0.f, 1.f, "%.4f");
-			ImGui::SliderFloat("Extrinsic L2 reg.", &m_nerf.training.extrinsic_l2_reg, 1e-8f, 0.1f, "%.6f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			ImGui::SliderFloat("Intrinsic L2 reg.", &m_nerf.training.intrinsic_l2_reg, 1e-8f, 0.1f, "%.6f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			ImGui::SliderFloat("Exposure L2 reg.", &m_nerf.training.exposure_l2_reg, 1e-8f, 0.1f, "%.6f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
-			ImGui::TreePop();
-		}
+		ImGui::Text("Steps: %d, Loss: %0.6f (%0.2f dB)", m_training_step, m_loss_scalar.ema_val(), linear_to_db(m_loss_scalar.ema_val()));
 
 		if (accum_reset) {
 			reset_accumulation();
@@ -1491,7 +1397,7 @@ vec3 Testbed::convert_input_dir_to_world(ivec2 prev_mouse_pos, ivec2 curr_mouse_
 	vec4 world_dir = camera_dir * view2world;
 
 	// Scale vector to appropriate size in world space
-	float scale = 0.0005f * m_scale;
+	float scale = 0.00002f * m_scale;
 	world_dir.x = world_dir.x * scale;
 	world_dir.y = world_dir.y * scale;
 	world_dir.z = world_dir.z * scale;

@@ -554,8 +554,8 @@ public:
 
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 
-	bool m_edit_win = true;
-	bool m_training_win = false;
+	bool m_edit_win = false;
+	bool m_training_win = true;
 	bool m_render_win = false;
 	bool m_camera_win = false;
 	bool m_debug_win = false;
@@ -570,7 +570,7 @@ public:
 	vec3 m_input_pos = vec3(0.0f);
 	vec3 m_input_dir = vec3(0.0f);
 	int  m_deform_range = 3;
-	float m_deform_force = 0.8f;
+	float m_deform_force = 0.5f;
 
 	// ------------------------------------------------- UPDATE -------------------------------------------------
 
