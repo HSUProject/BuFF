@@ -21,8 +21,8 @@ VoxelFLEX는 4가지의 ngp(neural graphics primitives) 중 하나인 NeRF(Neura
     </thead>
     <tbody>
     	<tr>
-        	<th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/master/docs/assets_readme/Before01.jpg" alt="Before" style="zoom:80%;" /></th>
-            <th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/master/docs/assets_readme/After01.jpg" alt="After" style="zoom:80%;" /></th>
+        	<th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/Before01.jpg" alt="Before" style="zoom:80%;" /></th>
+            <th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/After01.jpg" alt="After" style="zoom:80%;" /></th>
         </tr>
     </tbody>
 </table>
@@ -102,7 +102,7 @@ VoxelFLEX.bat 배치 파일을 실행함으로써 기존에 분리되어 있던 
 
 여기까지 설정이 되었다면 이제는 본격적으로 변형을 시킬 차례이다. Edit창에서 `Range`와 `Force`를 통해 입력을 통해 가해지는 변형의 범위와 강도를 조절할 수 있다.
 
-![](https://github.com/HSUProject/BuFF/blob/master/docs/assets_readme/voxelscreen.jpg)
+![](https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/voxelscreen.jpg)
 
 
 
