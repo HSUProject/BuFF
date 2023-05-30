@@ -10,6 +10,42 @@ VoxelFLEX는 4가지의 ngp(neural graphics primitives) 중 하나인 NeRF(Neura
 
 지금까지 영상의학과 관련하여 시술 상담을 진행할 때, 시술 이전과 이후를 비교한 예상 결과를 보여주었는데, 이는 정적인 2D영상으로 결과를 제공하여 한정된 정보만 표현이 가능한 어려움을 지니고 있었다. VoxelFLEX는 이러한 한계를 극복하기 위해 2D영상을 NeRF를 통해 3D영상으로 변환하여, 이전보다 입체적이고 직관적인 시각 정보를 제공할 수 있도록 한다. 또한, 실시간으로 영상 데이터를 변형시킬 수 있어 시술 이전과 이후의 차이를 보다 구체적으로 전달하여 원활한 의사소통을 할 수 있도록 도와준다.
 
+다음 그림은 사람을 대상으로 눈을 초점으로 한 세밀한 변형과 얼굴 전체적으로 변형을 적용한 두 가지 다른 모습을 보여주며 시점의 확대 및 축소와 무관하게 자연스러운 변형이 이루어진 모습을 볼 수가 있다.
+
+<table>
+    <thead>
+        <tr>
+            <th style="text-align: center">Before</th>
+        	<th style="text-align: center">After</th>
+        </tr>
+    </thead>
+    <tbody>
+    	<tr>
+        	<th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/Before02.jpg" alt="Before" style="zoom:80%;" /></th>
+            <th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/After02.jpg" alt="After" style="zoom:80%;" /></th>
+        </tr>
+    </tbody>
+</table>
+
+
+
+<table>
+    <thead>
+        <tr>
+            <th style="text-align: center">Before</th>
+        	<th style="text-align: center">After</th>
+        </tr>
+    </thead>
+    <tbody>
+    	<tr>
+        	<th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/Before03.jpg" alt="Before" style="zoom:80%;" /></th>
+            <th style="text-align: center"><img src="https://github.com/HSUProject/BuFF/blob/main/docs/assets_readme/After03.jpg" alt="After" style="zoom:80%;" /></th>
+        </tr>
+    </tbody>
+</table>
+
+
+
 영상의학에서 사용되는 시술 상담은 단순한 예시일 뿐, VoxelFLEX는 동영상을 통해 대상을 촬영할 수 있는 모든 곳에 적용시킬 수 있는 확장성을 지니고 있다. 다음 그림과 같이 사람을 대상으로 하지 않은 인형을 촬영하여 표정을 변형시킬 수도 있다.
 
 <table>
