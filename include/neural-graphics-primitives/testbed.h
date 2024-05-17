@@ -560,12 +560,15 @@ public:
 	bool m_camera_win = false;
 	bool m_debug_win = false;
 
-
 	bool m_init_volume = false;
 	bool m_update_volume = false;
 	bool m_reset_volume = false;
 	bool m_undo_deform = false;
 	bool m_redo_deform = false;
+	bool m_expand_deform = false;
+	bool m_reduce_deform = false;
+	bool m_update_expand = false;
+	bool m_update_reduce = false;
 
 	vec3 m_input_pos = vec3(0.0f);
 	vec3 m_input_dir = vec3(0.0f);

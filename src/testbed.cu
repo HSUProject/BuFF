@@ -784,14 +784,36 @@ void Testbed::imgui() {
 
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("File")) {
-			if (ImGui::MenuItem("Save")){
-
+			if (ImGui::MenuItem("Save as Screenshot")){
+				keybd_event(VK_SNAPSHOT, 0, 0, 0);
+				keybd_event(VK_SNAPSHOT, 0, KEYEVENTF_KEYUP, 0);
 			}
-			if (ImGui::MenuItem("Save as ..")) {
+			if (ImGui::MenuItem("Save as GIF")) {
+				STARTUPINFO si;
+				PROCESS_INFORMATION pi;
 
+				ZeroMemory(&si, sizeof(si));
+				si.cb = sizeof(si);
+				ZeroMemory(&pi, sizeof(pi));
+
+				LPCTSTR lpApplicationName = "C:\\Program Files\\ScreenToGif\\ScreenToGif.exe";
+				CreateProcess(lpApplicationName,
+					NULL,
+					NULL,
+					NULL,
+					FALSE,
+					0,
+					NULL,
+					NULL,
+					&si,
+					&pi
+				);
+				CloseHandle(pi.hProcess);
+				CloseHandle(pi.hThread);
 			}
-
-
+			if (ImGui::MenuItem("Exit")) {
+				exit(0);
+			}
 
 			ImGui::EndMenu();
 		}
@@ -802,14 +824,14 @@ void Testbed::imgui() {
 		}
 
 		if (ImGui::BeginMenu("Training")) {
-			if (ImGui::MenuItem(m_train ? "stop training" : "start training")) {
+			if (ImGui::MenuItem(m_train ? "Stop training" : "Start training")) {
 				m_train = !m_train;
 			}
 
-			if (ImGui::MenuItem("reset training")) {
+			if (ImGui::MenuItem("Reset training")) {
 				reload_network_from_file();
 			}
-			if (ImGui::MenuItem(m_training_win ? "hide" : "details")) {
+			if (ImGui::MenuItem(m_training_win ? "Hide Details" : "Show Details")) {
 				m_training_win = !m_training_win;
 			}
 			ImGui::EndMenu();
@@ -833,23 +855,36 @@ void Testbed::imgui() {
 	bool accum_reset = false;
 
 	if (m_edit_win) {
-		ImGui::Begin("3D Editor");
-		if (ImGui::Button("undo")) {
+		ImGui::Begin("3D Editor", &m_edit_win);
+		if (ImGui::Button("Undo")) {
 			m_undo_deform = true;
 			reset_accumulation();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("redo")) {
+		if (ImGui::Button("Redo")) {
 			m_redo_deform = true;
 			reset_accumulation();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("reset")) {
+		if (ImGui::Button("Reset")) {
 			m_reset_volume = true;
 			reset_accumulation();
 		}
+		ImGui::Text("");
+
+		if (ImGui::Checkbox("Expand", &m_expand_deform)) {
+			glfwSwapInterval(m_expand_deform ? 1 : 0);
+			m_reduce_deform = false;
+		}
+		ImGui::SameLine();
+		if (ImGui::Checkbox("Reduce", &m_reduce_deform)) {
+			glfwSwapInterval(m_reduce_deform ? 1 : 0);
+			m_expand_deform = false;
+		}
+		ImGui::Text("");
+
 		ImGui::SetNextItemWidth(120);
-		ImGui::SliderInt("Range", &m_deform_range, 1, 5);
+		ImGui::SliderInt("Range", &m_deform_range, 1, 100);
 		ImGui::SameLine();
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3);
 		ImGui::SliderFloat("Force", &m_deform_force, 0.01f, 1.0f, "%0.1f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat);
@@ -910,7 +945,7 @@ void Testbed::imgui() {
 				}
 
 				ImGui::SameLine();
-				if (ImGui::Button("rotation only")) {
+				if (ImGui::Button("Rotation only")) {
 					accum_reset = true;
 					vec3 world_cen = transpose(m_render_aabb_to_local) * m_render_aabb.center();
 					m_render_aabb_to_local = mat3(1.0f);
@@ -936,7 +971,7 @@ void Testbed::imgui() {
 
 
 	if (m_render_win) {
-		ImGui::Begin("Rendering");
+		ImGui::Begin("Rendering", &m_render_win);
 		ImGui::Checkbox("Render", &m_render);
 		ImGui::SameLine();
 		if (ImGui::Checkbox("VSync", &m_vsync)) {
@@ -961,7 +996,7 @@ void Testbed::imgui() {
 	}
 
 	if (m_training_win) {
-		ImGui::Begin("Training");
+		ImGui::Begin("Training", &m_training_win);
 		if (imgui_colored_button(m_train ? "Stop training" : "Start training", 0.4)) {
 			set_train(!m_train);
 		}
@@ -981,7 +1016,7 @@ void Testbed::imgui() {
 	}
 
 	if (m_camera_win) {
-		ImGui::Begin("Camera");
+		ImGui::Begin("Camera", &m_camera_win);
 		ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.3f);
 		float local_fov = fov();
 		if (ImGui::SliderFloat("Field of view", &local_fov, 0.0f, 120.0f)) {
@@ -997,6 +1032,8 @@ void Testbed::imgui() {
 		if (ImGui::SliderFloat("Exposure", &m_exposure, -5.f, 5.f)) {
 			set_exposure(m_exposure);
 		}
+		ImGui::Text("");
+		accum_reset |= ImGui::SliderFloat("Focus depth", &m_slice_plane_z, -m_bounding_radius, m_bounding_radius);
 
 		if (accum_reset) {
 			reset_accumulation();
@@ -1007,7 +1044,7 @@ void Testbed::imgui() {
 
 
 	if (m_debug_win) {
-		ImGui::Begin("Debug");
+		ImGui::Begin("Debug", &m_debug_win);
 
 		ImGui::Checkbox("Visualize unit cube", &m_visualize_unit_cube);
 		ImGui::SameLine();
@@ -1154,7 +1191,7 @@ void Testbed::draw_visualizations(ImDrawList* list, const mat4x3& camera_matrix)
 	}
 
 	ImVec2 mouse_pos = { ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y };
-	list->AddCircle(mouse_pos, 10.0f, IM_COL32(226, 221, 109, 180), 0, 5.0f);
+	list->AddCircle(mouse_pos, m_deform_range* 10.0f, IM_COL32(226, 221, 109, 180), 0, 5.0f);
 }
 
 void glfw_error_callback(int error, const char* description) {
@@ -1396,8 +1433,16 @@ vec3 Testbed::convert_input_dir_to_world(ivec2 prev_mouse_pos, ivec2 curr_mouse_
 	mat4 view2world = inverse((mat4)camera_matrix);
 	vec4 world_dir = camera_dir * view2world;
 
+	int aabb_scale = 1;
+	//int tmp = m_nerf.training.dataset.aabb_scale;
+	//while (tmp != 1)
+	//{
+	//	tmp >> 1;
+	//	aabb_scale++;
+	//}
+
 	// Scale vector to appropriate size in world space
-	float scale = 0.00002f * m_scale;
+	float scale = 0.0005f * m_scale * aabb_scale;
 	world_dir.x = world_dir.x * scale;
 	world_dir.y = world_dir.y * scale;
 	world_dir.z = world_dir.z * scale;
@@ -1420,8 +1465,18 @@ void Testbed::mouse_drag() {
 	// ------------------------------------------ UPDATE ------------------------------------------
 
 	// Left Released
-	if (ImGui::GetIO().MouseReleased[0]) {
+	if (ImGui::GetIO().MouseReleased[0] && !m_expand_deform && !m_reduce_deform) {
 		m_update_volume = true;
+		reset_accumulation();
+	}
+
+	if (ImGui::GetIO().MouseReleased[0] && m_expand_deform) {
+		m_update_expand = true;
+		reset_accumulation();
+	}
+
+	if (ImGui::GetIO().MouseReleased[0] && m_reduce_deform) {
+		m_update_reduce = true;
 		reset_accumulation();
 	}
 
@@ -1436,6 +1491,8 @@ void Testbed::mouse_drag() {
 			reset_accumulation();
 		}
 		else if (ctrl) {
+			
+
 			float rot_sensitivity = m_fps_camera ? 0.35f : 1.0f;
 			mat3 rot = rotation_from_angles(-rel * 2.0f * PI() * rot_sensitivity);
 
@@ -1460,7 +1517,7 @@ void Testbed::mouse_drag() {
 			m_input_pos = get_3d_pos_from_pixel(*m_views.front().render_buffer, clicked_mouse_pos);
 			m_input_dir = convert_input_dir_to_world(clicked_mouse_pos, mouse, m_camera);
 
-			ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+			ImDrawList* draw_list = ImGui::GetForegroundDrawList(); 
 			draw_list->_FringeScale = 5.0f;
 			ImVec2 mouse_pos = { ImGui::GetIO().MouseClickedPos[0].x, ImGui::GetIO().MouseClickedPos[0].y };
 			draw_list->AddCircle(mouse_pos, m_deform_range * 10.0f, IM_COL32(109, 189, 209, 180), 0, 7.0f);
@@ -2316,7 +2373,17 @@ void Testbed::train_and_render(bool skip_rendering) {
 			auto& view = m_views[i];
 			futures[i] = view.device->enqueue_task([this, &view, stream = synced_streams.get(i)]() {
 				auto device_guard = use_device(stream, *view.render_buffer, *view.device);
+
+				//static int count = 0;
+				//int TIME = 0;
+				//clock_t start = clock();
 				render_frame_main(*view.device, view.camera0, view.camera1, view.screen_center, view.relative_focal_length, { 0.0f, 0.0f, 0.0f, 1.0f }, view.foveation, view.visualized_dimension);
+				//TIME += ((int)clock() - start) / (CLOCKS_PER_SEC / 1000);
+				//
+				//if (count < 100) {
+				//	printf("TIME: %d ms\n", TIME);
+				//	count++;
+				//}
 			});
 		}
 
